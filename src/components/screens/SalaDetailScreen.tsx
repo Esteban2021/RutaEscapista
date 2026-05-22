@@ -48,10 +48,10 @@ function RatingRow({ label, value, total }: { label: string; value: number; tota
   );
 }
 
-function PartidaRow({ partida }: { partida: Partida }) {
+function PartidaRow({ partida, salaId }: { partida: Partida; salaId: string }) {
   return (
     <Link
-      href={`/partida/${partida.id}`}
+      href={`/sala/${salaId}/partida/${partida.id}`}
       className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 transition-colors"
     >
       <div className="flex items-center gap-3">
@@ -222,7 +222,7 @@ export function SalaDetailScreen({ salaId }: { salaId: string }) {
         ) : (
           <div className="divide-y divide-slate-50">
             {partidas.map((p) => (
-              <PartidaRow key={p.id} partida={p} />
+              <PartidaRow key={p.id} partida={p} salaId={salaId} />
             ))}
           </div>
         )}
