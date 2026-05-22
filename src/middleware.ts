@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_EXACT = ["/login", "/salas", "/rutas"];
+const PUBLIC_EXACT = ["/login", "/registro", "/salas", "/rutas"];
 const PUBLIC_PREFIXES = ["/sala/", "/ruta/", "/rutas", "/invitacion/"];
+const AUTH_ONLY_REDIRECT = ["/login", "/registro"];
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT.includes(pathname)) return true;
@@ -17,7 +18,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (token && pathname === "/login") {
+  if (token && AUTH_ONLY_REDIRECT.includes(pathname)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
