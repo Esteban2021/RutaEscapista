@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Star, Clock } from "lucide-react";
+import { MapPin, Star, Clock, Plus } from "lucide-react";
 import { getSalas } from "@/lib/salas";
+import { useAuthStore } from "@/store/authStore";
 import type { Sala } from "@/types";
 
 const DIFICULTAD_LABELS: Record<string, string> = {
@@ -75,6 +76,8 @@ function SalaCard({ sala }: { sala: Sala }) {
 
 export function SalasScreen() {
   const [filtro, setFiltro] = useState("");
+  const { perfil } = useAuthStore();
+  const canCreate = perfil && ["admin", "superadmin"].includes(perfil.rol);
 
   const { data: salas = [], isLoading } = useQuery({
     queryKey: ["salas"],
@@ -89,6 +92,15 @@ export function SalasScreen() {
     <div className="max-w-5xl mx-auto px-4 py-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[#334155]">Salas de escape</h1>
+        {canCreate && (
+          <Link
+            href="/crear-sala"
+            className="flex items-center gap-1.5 bg-[#0D9488] text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-teal-700 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            Añadir sala
+          </Link>
+        )}
       </div>
 
       {/* Filtros */}

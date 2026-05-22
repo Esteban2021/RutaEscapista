@@ -58,7 +58,7 @@ export function AppNav() {
               {l.label}
             </Link>
           ))}
-          {user &&
+            {user &&
             AUTH_LINKS.map((l) => (
               <Link
                 key={l.href}
@@ -72,6 +72,18 @@ export function AppNav() {
                 {l.label}
               </Link>
             ))}
+          {perfil && ["admin", "superadmin"].includes(perfil.rol) && (
+            <Link
+              href="/crear-sala"
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                isActive("/crear-sala")
+                  ? "bg-teal-50 text-[#0D9488]"
+                  : "text-[#334155] hover:bg-slate-50"
+              }`}
+            >
+              + Sala
+            </Link>
+          )}
         </nav>
 
         {/* Right side */}
