@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, MapPin, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, MapPin, CheckCircle2, Loader2, Search } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { crearSala } from "@/lib/salas";
 import { extractCoordsFromGoogleMapsUrl, isGoogleMapsUrl, isShortGoogleMapsUrl } from "@/lib/geocoding";
@@ -49,14 +49,14 @@ function Field({
 }
 
 const inputCls =
-  "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500";
+  "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed";
 
 export function CrearSalaScreen() {
   const router = useRouter();
   const { user, perfil } = useAuthStore();
   const [coordsPreview, setCoordsPreview] = useState<{ lat: number; lng: number } | null>(null);
   const [coordsError, setCoordsError] = useState<string | null>(null);
-  const [geocoding, setGeocoding] = useState(false);
+  const [processingUrl, setProcessingUrl] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
@@ -82,8 +82,8 @@ export function CrearSalaScreen() {
     );
   }
 
-  async function handleMapsUrlBlur(e: React.FocusEvent<HTMLInputElement>) {
-    const url = e.target.value.trim();
+  async function processUrl(url: string) {
+    url = url.trim();
     setCoordsPreview(null);
     setCoordsError(null);
     if (!url) return;
@@ -93,56 +93,58 @@ export function CrearSalaScreen() {
       return;
     }
 
-    let resolvedUrl = url;
-
-    if (isShortGoogleMapsUrl(url)) {
-      try {
+    setProcessingUrl(true);
+    try {
+      let resolvedUrl = url;
+      if (isShortGoogleMapsUrl(url)) {
         const res = await fetch(`/api/expand-url?url=${encodeURIComponent(url)}`);
         const data = await res.json();
-        if (data.expanded) {
-          resolvedUrl = data.expanded;
+        if (data.expanded) resolvedUrl = data.expanded;
+        else {
+          setCoordsError("No se pudo expandir el enlace corto. Inténtalo de nuevo.");
+          return;
         }
-      } catch {
-        setCoordsError("No se pudo expandir el enlace corto. Inténtalo de nuevo.");
+      }
+
+      const coords = extractCoordsFromGoogleMapsUrl(resolvedUrl);
+      if (!coords) {
+        setCoordsError("No se pudieron extraer las coordenadas. Asegúrate de que la URL incluya la ubicación exacta.");
         return;
       }
-    }
+      setCoordsPreview(coords);
 
-    const coords = extractCoordsFromGoogleMapsUrl(resolvedUrl);
-    if (!coords) {
-      setCoordsError(
-        "No se pudieron extraer las coordenadas. Asegúrate de que la URL incluya la ubicación exacta (abre Google Maps, busca el lugar, y copia la URL del navegador)."
-      );
-      return;
-    }
+      const geoRes = await fetch(`/api/geocode?lat=${coords.lat}&lng=${coords.lng}`);
+      if (geoRes.ok) {
+        const geoData = await geoRes.json();
+        const a = geoData.address ?? {};
+        const calle = [a.road, a.house_number].filter(Boolean).join(" ");
+        const ciudad = a.city ?? a.town ?? a.village ?? a.municipality ?? "";
+        const provincia = a.county ?? a.state_district ?? a.state ?? "";
+        const cp = a.postcode ?? "";
+        const pais = (a.country_code ?? "es").toUpperCase();
 
-    setCoordsPreview(coords);
-    fillAddressFromCoords(coords.lat, coords.lng);
+        if (calle) setValue("calle", calle, { shouldValidate: false });
+        if (ciudad) setValue("ciudad", ciudad, { shouldValidate: false });
+        if (provincia) setValue("provincia", provincia, { shouldValidate: false });
+        if (cp) setValue("cp", cp, { shouldValidate: false });
+        setValue("pais", pais, { shouldValidate: false });
+      }
+    } catch {
+      setCoordsError("Error al procesar la URL. Inténtalo de nuevo.");
+      setCoordsPreview(null);
+    } finally {
+      setProcessingUrl(false);
+    }
   }
 
-  async function fillAddressFromCoords(lat: number, lng: number) {
-    setGeocoding(true);
-    try {
-      const res = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const a = data.address ?? {};
+  function handleMapsUrlPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const url = e.clipboardData.getData("text");
+    if (url) processUrl(url);
+  }
 
-      const calle = [a.road, a.house_number].filter(Boolean).join(" ");
-      const ciudad = a.city ?? a.town ?? a.village ?? a.municipality ?? "";
-      const provincia = a.county ?? a.state_district ?? a.state ?? "";
-      const cp = a.postcode ?? "";
-      const pais = (a.country_code ?? "es").toUpperCase();
-
-      if (calle) setValue("calle", calle, { shouldValidate: false });
-      if (ciudad) setValue("ciudad", ciudad, { shouldValidate: false });
-      if (provincia) setValue("provincia", provincia, { shouldValidate: false });
-      if (cp) setValue("cp", cp, { shouldValidate: false });
-      setValue("pais", pais, { shouldValidate: false });
-    } catch {
-      // El relleno automático es opcional; si falla, el usuario rellena manualmente
-    } finally {
-      setGeocoding(false);
+  function handleMapsUrlBlur(e: React.FocusEvent<HTMLInputElement>) {
+    if (!coordsPreview && !processingUrl) {
+      processUrl(e.target.value);
     }
   }
 
@@ -177,6 +179,8 @@ export function CrearSalaScreen() {
   }
 
   const mapsUrl = watch("googleMapsUrl");
+  const locked = !coordsPreview;
+  const showValidarBtn = !!mapsUrl && !coordsPreview && !processingUrl;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -196,16 +200,32 @@ export function CrearSalaScreen() {
 
           {/* Google Maps URL */}
           <Field label="Enlace de Google Maps" required error={coordsError ?? errors.googleMapsUrl?.message}>
-            <input
-              {...register("googleMapsUrl")}
-              onBlur={handleMapsUrlBlur}
-              placeholder="https://www.google.com/maps/place/..."
-              className={`${inputCls} ${coordsError ? "border-red-300 focus:ring-red-400" : coordsPreview ? "border-teal-400" : ""}`}
-            />
-            {geocoding && (
+            <div className="flex gap-2">
+              <input
+                {...register("googleMapsUrl")}
+                onPaste={handleMapsUrlPaste}
+                onBlur={handleMapsUrlBlur}
+                placeholder="https://www.google.com/maps/place/..."
+                className={`${inputCls} ${coordsError ? "border-red-300 focus:ring-red-400" : coordsPreview ? "border-teal-400" : ""}`}
+              />
+              {(showValidarBtn || processingUrl) && (
+                <button
+                  type="button"
+                  onClick={() => processUrl(mapsUrl ?? "")}
+                  disabled={processingUrl}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-[#0D9488] hover:bg-teal-50 transition-colors disabled:opacity-50"
+                >
+                  {processingUrl
+                    ? <Loader2 className="w-4 h-4 animate-spin" />
+                    : <Search className="w-4 h-4" />}
+                  {processingUrl ? "..." : "Validar"}
+                </button>
+              )}
+            </div>
+            {processingUrl && (
               <p className="text-xs text-slate-400 mt-1 animate-pulse">Obteniendo dirección...</p>
             )}
-            {coordsPreview && !geocoding && (
+            {coordsPreview && !processingUrl && (
               <p className="flex items-center gap-1 text-xs text-teal-600 mt-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Coordenadas extraídas: {coordsPreview.lat.toFixed(5)}, {coordsPreview.lng.toFixed(5)}
@@ -219,43 +239,47 @@ export function CrearSalaScreen() {
                 </a>
               </p>
             )}
-            {!coordsPreview && !coordsError && (
+            {!coordsPreview && !coordsError && !processingUrl && (
               <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
                 <MapPin className="w-3 h-3" />
-                Abre el lugar en Google Maps → copia la URL del navegador
+                Pega el enlace de Google Maps para continuar
               </p>
             )}
           </Field>
 
           {/* Dirección */}
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-[#334155]">Dirección</p>
+          <div className={`space-y-3 transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+            <p className="text-sm font-medium text-[#334155]">
+              Dirección
+              {locked && <span className="text-xs text-slate-400 font-normal ml-2">(se rellena automáticamente)</span>}
+            </p>
             <Field label="Calle y número" error={errors.calle?.message}>
-              <input {...register("calle")} placeholder="Calle Mayor 12" className={inputCls} />
+              <input {...register("calle")} disabled={locked} placeholder="Calle Mayor 12" className={inputCls} />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Ciudad" error={errors.ciudad?.message}>
-                <input {...register("ciudad")} placeholder="Madrid" className={inputCls} />
+                <input {...register("ciudad")} disabled={locked} placeholder="Madrid" className={inputCls} />
               </Field>
               <Field label="Provincia" error={errors.provincia?.message}>
-                <input {...register("provincia")} placeholder="Madrid" className={inputCls} />
+                <input {...register("provincia")} disabled={locked} placeholder="Madrid" className={inputCls} />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Código postal" error={errors.cp?.message}>
-                <input {...register("cp")} placeholder="28001" className={inputCls} />
+                <input {...register("cp")} disabled={locked} placeholder="28001" className={inputCls} />
               </Field>
               <Field label="País" error={errors.pais?.message}>
-                <input {...register("pais")} placeholder="ES" className={inputCls} />
+                <input {...register("pais")} disabled={locked} placeholder="ES" className={inputCls} />
               </Field>
             </div>
           </div>
 
           {/* Duración y dificultad */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className={`grid grid-cols-2 gap-3 transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
             <Field label="Duración (minutos)" error={errors.duracionMinutos?.message}>
               <input
                 {...register("duracionMinutos")}
+                disabled={locked}
                 type="number"
                 min={10}
                 max={360}
@@ -264,7 +288,7 @@ export function CrearSalaScreen() {
               />
             </Field>
             <Field label="Dificultad" error={errors.dificultad?.message}>
-              <select {...register("dificultad")} className={inputCls}>
+              <select {...register("dificultad")} disabled={locked} className={inputCls}>
                 <option value="">Sin especificar</option>
                 <option value="facil">Fácil</option>
                 <option value="media">Media</option>
@@ -274,24 +298,30 @@ export function CrearSalaScreen() {
           </div>
 
           {/* Descripción */}
-          <Field label="Descripción" error={errors.descripcion?.message}>
-            <textarea
-              {...register("descripcion")}
-              rows={4}
-              placeholder="Describe la sala: temática, número de jugadores recomendado..."
-              className={`${inputCls} resize-none`}
-            />
-          </Field>
+          <div className={`transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+            <Field label="Descripción" error={errors.descripcion?.message}>
+              <textarea
+                {...register("descripcion")}
+                disabled={locked}
+                rows={4}
+                placeholder="Describe la sala: temática, número de jugadores recomendado..."
+                className={`${inputCls} resize-none`}
+              />
+            </Field>
+          </div>
 
           {/* Web oficial */}
-          <Field label="Web oficial" error={errors.webOficial?.message}>
-            <input
-              {...register("webOficial")}
-              type="url"
-              placeholder="https://www.escaperoomejemplo.com"
-              className={inputCls}
-            />
-          </Field>
+          <div className={`transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+            <Field label="Web oficial" error={errors.webOficial?.message}>
+              <input
+                {...register("webOficial")}
+                disabled={locked}
+                type="url"
+                placeholder="https://www.escaperoomejemplo.com"
+                className={inputCls}
+              />
+            </Field>
+          </div>
 
           {submitError && <p className="text-sm text-red-500">{submitError}</p>}
 
