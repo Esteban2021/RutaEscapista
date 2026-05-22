@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const PUBLIC_EXACT = ["/login", "/salas", "/rutas"];
-const PUBLIC_PREFIXES = ["/sala/", "/ruta/", "/invitacion/"];
+const PUBLIC_PREFIXES = ["/sala/", "/ruta/", "/rutas", "/invitacion/"];
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT.includes(pathname)) return true;

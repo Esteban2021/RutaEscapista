@@ -1,6 +1,6 @@
 import {
-  collection, doc, getDoc, addDoc,
-  updateDoc, arrayUnion, arrayRemove,
+  collection, collectionGroup, doc, getDoc, addDoc,
+  updateDoc, arrayUnion, arrayRemove, query, where, getDocs,
   serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -61,6 +61,18 @@ export async function leavePartida(salaId: string, partidaId: string, uid: strin
     jugadoresConfirmados: arrayRemove(uid),
     fechaActualizacion: serverTimestamp(),
   });
+}
+
+export async function getMisPartidas(uid: string): Promise<Partida[]> {
+  const q = query(
+    collectionGroup(db, "partidas"),
+    where("jugadoresConfirmados", "array-contains", uid),
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => d.id !== "_schema")
+    .map((d) => ({ id: d.id, ...d.data() } as Partida))
+    .sort((a, b) => (a.fecha > b.fecha ? -1 : 1));
 }
 
 export async function updateEstadoPartida(
