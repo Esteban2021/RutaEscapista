@@ -33,5 +33,9 @@ export function extractCoordsFromGoogleMapsUrl(url: string): CoordsResult | null
 }
 
 export function isGoogleMapsUrl(url: string): boolean {
-  return /google\.(com|es|co\.\w+)\/maps|maps\.google\.|goo\.gl\/maps/i.test(url);
+  return /google\.(com|es|co\.\w+)\/maps|maps\.google\.|goo\.gl\/maps|maps\.app\.goo\.gl/i.test(url);
+}
+
+export function isShortGoogleMapsUrl(url: string): boolean {
+  return /maps\.app\.goo\.gl/i.test(url);
 }

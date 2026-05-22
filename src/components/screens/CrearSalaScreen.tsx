@@ -9,7 +9,7 @@ import Link from "next/link";
 import { ArrowLeft, MapPin, CheckCircle2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { crearSala } from "@/lib/salas";
-import { extractCoordsFromGoogleMapsUrl, isGoogleMapsUrl } from "@/lib/geocoding";
+import { extractCoordsFromGoogleMapsUrl, isGoogleMapsUrl, isShortGoogleMapsUrl } from "@/lib/geocoding";
 
 const schema = z.object({
   nombreSala: z.string().min(2, "Mínimo 2 caracteres").max(100, "Máximo 100 caracteres").trim(),
@@ -80,7 +80,7 @@ export function CrearSalaScreen() {
     );
   }
 
-  function handleMapsUrlBlur(e: React.FocusEvent<HTMLInputElement>) {
+  async function handleMapsUrlBlur(e: React.FocusEvent<HTMLInputElement>) {
     const url = e.target.value.trim();
     setCoordsPreview(null);
     setCoordsError(null);
@@ -91,7 +91,22 @@ export function CrearSalaScreen() {
       return;
     }
 
-    const coords = extractCoordsFromGoogleMapsUrl(url);
+    let resolvedUrl = url;
+
+    if (isShortGoogleMapsUrl(url)) {
+      try {
+        const res = await fetch(`/api/expand-url?url=${encodeURIComponent(url)}`);
+        const data = await res.json();
+        if (data.expanded) {
+          resolvedUrl = data.expanded;
+        }
+      } catch {
+        setCoordsError("No se pudo expandir el enlace corto. Inténtalo de nuevo.");
+        return;
+      }
+    }
+
+    const coords = extractCoordsFromGoogleMapsUrl(resolvedUrl);
     if (coords) {
       setCoordsPreview(coords);
     } else {
