@@ -1,0 +1,40 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Avatares de usuarios
+    match /avatars/{uid} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                   request.auth.uid == uid &&
+                   request.resource.size < 2 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/(jpeg|png)');
+    }
+
+    // Imagen principal de sala
+    match /salas/{salaId}/main.jpg {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                   request.resource.size < 5 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/(jpeg|png)');
+    }
+
+    // Fotos de partidas (subidas por jugadores)
+    match /fotosPartidas/{partidaId}/{usuarioId}/{fotoId} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                   request.auth.uid == usuarioId &&
+                   request.resource.size < 10 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/(jpeg|png)');
+      allow delete: if request.auth != null && request.auth.uid == usuarioId;
+    }
+
+    // Imagen principal de ruta
+    match /rutas/{rutaId}/main.jpg {
+      allow read: if true;
+      allow write: if request.auth != null &&
+                   request.resource.size < 5 * 1024 * 1024 &&
+                   request.resource.contentType.matches('image/(jpeg|png)');
+    }
+  }
+}

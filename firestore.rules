@@ -1,0 +1,211 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                                USUARIOS
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /usuarios/{uid} {
+
+      // Solo el usuario puede editar su propio perfil
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && request.auth.uid == uid;
+
+      // Crear perfil propio
+      allow create: if request.auth != null && request.auth.uid == uid;
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                               SALAS
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /salas/{salaId} {
+
+      allow read: if true;
+
+      // Crear sala = solo admin y superadmin
+      allow create: if request.auth != null &&
+                    get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol in [
+                      'admin', 'superadmin'
+                    ];
+
+      // Editar sala = creador o admin o superadmin
+      allow update: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol in [
+                        'admin', 'superadmin'
+                      ]
+                    );
+
+      // Borrar sala = creador o admin o superadmin
+      allow delete: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol in [
+                        'admin', 'superadmin'
+                      ]
+                    );
+
+      // Subcolección: partidas
+      match /partidas/{partidaId} {
+
+        allow read: if true;
+
+        allow create: if request.auth != null &&
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['gestor','admin','superadmin'];
+
+        allow update: if request.auth != null &&
+                      (
+                        resource.data.creadorId == request.auth.uid ||
+                        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                          in ['admin','superadmin']
+                      );
+
+        allow delete: if request.auth != null &&
+                      (
+                        resource.data.creadorId == request.auth.uid ||
+                        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                          in ['admin','superadmin']
+                      );
+
+        // Subcolección: comentarios
+        match /comentarios/{comentarioId} {
+
+          allow read: if true;
+
+          allow create: if request.auth != null;
+
+          allow update: if request.auth != null &&
+                        resource.data.usuarioId == request.auth.uid;
+
+          allow delete: if request.auth != null &&
+                        (
+                          resource.data.usuarioId == request.auth.uid ||
+                          get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                            in ['admin','superadmin']
+                        );
+        }
+      }
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                                  RUTAS
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /rutas/{rutaId} {
+
+      allow read: if true;
+
+      allow create: if request.auth != null &&
+                    get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                      in ['gestor','admin','superadmin'];
+
+      allow update: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['admin','superadmin']
+                    );
+
+      allow delete: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['admin','superadmin']
+                    );
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                                   VOTOS
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /votos/{votoId} {
+
+      allow read: if true;
+
+      allow create: if request.auth != null;
+
+      allow update: if request.auth != null &&
+                    resource.data.usuarioId == request.auth.uid;
+
+      allow delete: if request.auth != null &&
+                    (
+                      resource.data.usuarioId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['admin','superadmin']
+                    );
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                              INVITACIONES
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /invitaciones/{invId} {
+
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null;
+
+      allow update: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['admin','superadmin']
+                    );
+
+      allow delete: if request.auth != null &&
+                    (
+                      resource.data.creadorId == request.auth.uid ||
+                      get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+                        in ['admin','superadmin']
+                    );
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                     PETICIONES GESTOR (subir rol)
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /peticionesGestor/{petId} {
+
+      allow read: if request.auth != null;
+
+      allow create: if request.auth != null &&
+                    request.auth.uid == request.resource.data.usuarioId;
+
+      allow update, delete: if request.auth != null &&
+                            get(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+                              .data.rol in ['admin','superadmin'];
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                             NOTIFICACIONES
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /notificaciones/{id} {
+      allow read, write: if request.auth != null &&
+                         request.auth.uid == resource.data.userId;
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////
+    //                               REPORTES
+    ////////////////////////////////////////////////////////////////////////////
+
+    match /reportes/{id} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if request.auth != null &&
+                                  get(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+                                    .data.rol in ['admin','superadmin'];
+    }
+
+  }
+}

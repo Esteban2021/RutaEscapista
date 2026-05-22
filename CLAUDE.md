@@ -1,0 +1,248 @@
+# CLAUDE.md — RutaEscapista
+
+Documento de referencia para el desarrollo. Actualizar cuando cambie el stack, la arquitectura o las convenciones.
+
+---
+
+## Visión general
+
+**RutaEscapista** es una plataforma web para registrar, organizar y valorar partidas de escape room.
+
+- **Sala**: establecimiento físico de escape room (entidad base)
+- **Partida**: sesión concreta en una sala (fecha, jugadores, estado)
+- **Ruta**: itinerario de varias partidas en distintas salas, jugadas de forma consecutiva
+- **Usuario**: jugador con perfil, historial y rol
+
+Análisis funcional completo: [`docs/RutaEscapista_Analisis_Funcional.md`](docs/RutaEscapista_Analisis_Funcional.md)
+
+> ⚠️ El análisis fue generado pensando en **Vue + GitHub Pages**. La implementación real usa **Next.js + Firebase Hosting**. Ignorar todas las referencias a Vue Router, el parche `404.html`, y el deploy en GitHub Pages.
+
+---
+
+## Stack técnico
+
+| Capa | Tecnología |
+|---|---|
+| Framework | Next.js 14 (App Router) |
+| Lenguaje | TypeScript |
+| Estilos | Tailwind CSS |
+| Estado cliente | Zustand (auth) + React Query (fetching, pendiente instalar) |
+| Formularios | react-hook-form + zod (pendiente instalar) |
+| Auth | Firebase Authentication (email+contraseña; Google login pendiente) |
+| Base de datos | Firestore — project: `rutas-punt0defuga`, database: `punt0defuga` |
+| Storage | Firebase Storage |
+| Iconos | Lucide React (instalado) |
+| Hosting objetivo | Firebase Hosting |
+
+---
+
+## Comandos esenciales
+
+```bash
+npm run dev        # Dev server (abre Chrome automáticamente en scripts/dev.js)
+npm run build      # Build producción
+npm run db:schema  # Inicializa colecciones en Firestore (ya ejecutado una vez)
+npm run db:seed        # Seed de datos de prueba (actualmente comentado)
+npm run rules:deploy   # Publica firestore.rules y storage.rules en Firebase
+npm run rules:get      # Descarga y muestra las reglas actualmente desplegadas
+```
+
+---
+
+## Roles y jerarquía
+
+```
+Superadmin > Admin > Gestor de Partidas > Usuario
+```
+
+Los roles superiores incluyen todos los permisos de los inferiores.
+
+| Rol | Valor en `rol` | Cómo se asigna |
+|---|---|---|
+| Superadmin | `'superadmin'` | Manual en consola Firebase |
+| Admin | `'admin'` | Manual o por superadmin |
+| Gestor | `'gestor'` | Solicitud aprobada (`peticionesGestor`) |
+| Usuario | `'usuario'` (o ausente) | Al registrarse |
+
+**Campo en Firestore**: `usuarios/{uid}.rol` — string simple (`'usuario' | 'gestor' | 'admin' | 'superadmin'`).
+Las reglas usan `get(...).data.rol in ['admin','superadmin']`.
+
+Ver tabla completa de permisos en [`docs/`](docs/RutaEscapista_Analisis_Funcional.md#2-roles-y-permisos) §2.
+
+---
+
+## Estructura de Firestore
+
+```
+usuarios/{uid}
+salas/{salaId}
+  └── partidas/{partidaId}          ← subcolección: no existe sin sala
+        └── comentarios/{comentarioId}  ← subcolección: no existe sin partida
+votos/{votoId}                      ← colección raíz (una por usuario por partida)
+rutas/{rutaId}
+invitaciones/{invId}
+peticionesGestor/{petId}
+notificaciones/{id}
+reportes/{id}
+estadisticas/general                ← documento único
+```
+
+`partidas` y `comentarios` son subcolecciones, no colecciones raíz. El seed ya las creó así.
+
+**Inicializar Admin SDK siempre con el database ID explícito:**
+```ts
+getFirestore("punt0defuga")
+```
+
+---
+
+## URLs del proyecto
+
+```
+/                              → Inicio (público)
+/salas                         → Listado de salas
+/sala/[salaId]                 → Ficha de sala
+/rutas                         → Listado de rutas
+/ruta/[rutaId]                 → Ficha de ruta
+/ruta/nueva                    → Crear ruta (Gestor+)
+/ruta/[rutaId]/editar          → Editar ruta
+/partida/[partidaId]           → Ficha de partida
+/partida/[partidaId]/editar    → Editar partida
+/invitacion/[partidaId]/[token]→ Pantalla de invitación (público)
+/mis-partidas                  → Mis partidas
+/mis-rutas                     → Mis rutas
+/crear-sala                    → Crear sala (Admin+)
+/perfil                        → Mi perfil
+/perfil/editar                 → Editar perfil
+/faq                           → FAQ
+/admin                         → Panel administración
+/admin/gestores                → Solicitudes ascenso a Gestor
+/admin/reportes                → Reportes de fotos
+```
+
+Rutas públicas (sin auth): `/`, `/salas`, `/sala/[salaId]`, `/rutas`, `/ruta/[rutaId]`, `/invitacion/...`
+
+Actualizar `src/middleware.ts` al añadir rutas públicas.
+
+---
+
+## Diseño visual
+
+**Paleta de colores (Tailwind custom tokens):**
+
+| Token | Color | Hex |
+|---|---|---|
+| `primary` | Teal | `#0D9488` |
+| `background` | Gris muy claro | `#F8FAFC` |
+| `foreground` | Gris oscuro | `#334155` |
+| `accent` | Violeta | `#6366F1` |
+
+**Otros parámetros:**
+- Border radius: `12px` (`rounded-xl` en Tailwind)
+- Sombras: suaves estilo iOS (`shadow-sm` / `shadow-md`)
+- Fuente: sistema (no cargar fuentes externas — eliminar las Geist actuales)
+- Mobile-first
+
+---
+
+## Reglas de Firestore
+
+Ver reglas completas en [`docs/`](docs/RutaEscapista_Analisis_Funcional.md#16-reglas-de-seguridad-firestore) §16.
+
+Pendiente crear `firestore.rules` en la raíz del proyecto.
+
+---
+
+## Firebase Storage — estructura de carpetas
+
+```
+/avatars/{uid}.jpg
+/salas/{salaId}/main.jpg
+/fotosPartidas/{partidaId}/{usuarioId}/{fotoId}.jpg
+/rutas/{rutaId}/main.jpg
+```
+
+Solo JPG y PNG. Las fotos de perfil se redimensionan a 400×400 px.
+
+---
+
+## Estado de implementación
+
+### ✅ Completado
+- Firebase SDK cliente (`src/lib/firebase.ts`)
+- Auth email+contraseña funcional
+- Login / logout con redirección
+- Middleware de protección de rutas (`src/middleware.ts`)
+- Zustand store para auth (`src/store/authStore.ts`)
+- Schema Firestore inicializado (seed ejecutado)
+- Dashboard placeholder
+
+### ❌ Pendiente (orden sugerido)
+
+**Fase 0 — Infraestructura**
+- [ ] `firestore.rules` + `storage.rules` en raíz
+- [ ] `firebase.json` + `.firebaserc`
+- [ ] Instalar `react-hook-form`, `zod`, `@tanstack/react-query`
+- [ ] Configurar colores custom en `tailwind.config.ts`
+- [ ] Eliminar fuentes Geist, usar fuente de sistema
+
+**Fase 1 — Auth completa + Perfil**
+- [ ] Registro de nuevos usuarios (email+contraseña)
+- [ ] Google Login
+- [ ] Onboarding: crear documento `usuarios/{uid}` al registrarse
+- [ ] Página `/perfil` (nick, foto, ubicación)
+- [ ] Solicitud de ascenso a Gestor
+
+**Fase 2 — Salas**
+- [ ] `/salas` — listado con filtros (país, dificultad, estado)
+- [ ] `/sala/[salaId]` — ficha (info, valoraciones, fotos, comentarios)
+- [ ] `/crear-sala` — formulario con geocoding desde URL Google Maps
+
+**Fase 3 — Partidas**
+- [ ] Crear partida en una sala (Gestor+)
+- [ ] `/partida/[partidaId]` — ficha
+- [ ] Unirse / abandonar partida
+- [ ] Gestión de jugadores confirmados / pendientes / tentativos
+- [ ] Flujo de invitación con token
+
+**Fase 4 — Contenido social**
+- [ ] Votaciones (5 categorías: General, Juegos, Ambientación, Gamemaster, Miedo)
+- [ ] Comentarios con soporte de spoilers
+- [ ] Fotos (subida a Storage, galería, reporte)
+
+**Fase 5 — Rutas**
+- [ ] `/rutas` — listado
+- [ ] `/ruta/[rutaId]` — ficha con mapa y botones Google Maps
+- [ ] Crear / editar ruta
+- [ ] Copiar ruta
+
+**Fase 6 — Admin + Notificaciones**
+- [ ] Panel `/admin`
+- [ ] Centro de notificaciones
+- [ ] FAQ
+
+**Fase 7 — Deploy + Cloud Functions**
+- [ ] Cloud Functions (ver §18 del análisis)
+- [ ] Firebase Hosting deploy
+
+---
+
+## Convenciones de código
+
+- Componentes de pantalla en `src/components/screens/` (patrón ya establecido)
+- Hooks en `src/hooks/`
+- Lógica de Firebase en `src/lib/`
+- Stores Zustand en `src/store/`
+- Tipos compartidos en `src/types/` (crear cuando haya al menos 2-3 tipos)
+- Los Server Components de Next.js para páginas que solo leen datos públicos; Client Components para interactividad
+- No mockear Firebase en tests — usar datos reales o emulador
+
+---
+
+## Notas de negocio importantes
+
+- **Votos**: solo usuarios en `jugadoresConfirmados` de una partida en estado `jugada`; editables 7 días; nunca se borran (solo se anulan).
+- **Fotos**: se pueden subir desde 15 min antes de la partida; máximo 3 por usuario por partida; aparecen también en la galería de la sala.
+- **Partidas**: `fecha` y `hora` se guardan como strings separados (evita timezone issues); `fechaHoraInicio` es el timestamp calculado.
+- **Salas**: requieren coordenadas obligatoriamente — si el geocoding falla, no se crea la sala.
+- **Google Maps**: máximo 9 waypoints por URL; rutas con más salas se dividen en varios enlaces.

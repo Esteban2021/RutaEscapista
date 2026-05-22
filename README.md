@@ -1,38 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RutaEscapista
 
-## Getting Started
+Plataforma web para registrar, organizar y valorar partidas de escape room.
 
-First, run the development server:
+- **Salas** → establecimientos físicos de escape room
+- **Partidas** → sesiones concretas en una sala (fecha, jugadores, estado)
+- **Rutas** → itinerarios de varias partidas en distintas salas
+
+Análisis funcional completo: [`docs/RutaEscapista_Analisis_Funcional.md`](docs/RutaEscapista_Analisis_Funcional.md)
+
+---
+
+## Stack
+
+| Capa | Tecnología |
+|---|---|
+| Framework | Next.js 14 (App Router) |
+| Estilos | Tailwind CSS |
+| Estado | Zustand + React Query |
+| Formularios | react-hook-form + zod |
+| Backend | Firebase Auth + Firestore + Storage |
+| Hosting | Firebase Hosting (pendiente) |
+
+---
+
+## Arrancar en local
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abre [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Requiere un archivo `.env.local` con las credenciales de Firebase (ver `.env.local.example` si existe).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Scripts disponibles
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev            # Servidor de desarrollo (abre Chrome automáticamente)
+npm run build          # Build de producción
+npm run lint           # ESLint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+npm run db:schema      # Inicializa colecciones en Firestore (ejecutar una vez)
+npm run db:seed        # Seed de datos de prueba
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+npm run rules:deploy   # Publica firestore.rules y storage.rules en Firebase
+npm run rules:get      # Consulta las reglas actualmente desplegadas
+```
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Estructura del proyecto
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+src/
+├── app/
+│   ├── (auth)/login/          # Página de login
+│   ├── (main)/                # Rutas protegidas (requieren auth)
+│   │   ├── layout.tsx         # Nav + comprobación de onboarding
+│   │   ├── dashboard/         # Inicio para usuarios autenticados
+│   │   ├── perfil/            # Ver perfil
+│   │   └── perfil/editar/     # Editar perfil (onboarding incluido)
+│   ├── salas/                 # Listado de salas (público)
+│   └── sala/[salaId]/         # Ficha de sala (público)
+├── components/
+│   ├── layout/AppNav.tsx      # Barra de navegación
+│   ├── providers/             # QueryProvider
+│   └── screens/               # Componentes de pantalla completa
+├── hooks/useAuth.ts           # Listener de auth + carga de perfil Firestore
+├── lib/
+│   ├── firebase.ts            # Inicialización Firebase
+│   ├── salas.ts               # Queries de salas y partidas
+│   └── usuarios.ts            # CRUD de perfiles de usuario
+├── store/authStore.ts         # Zustand: user + perfil + loading
+├── types/index.ts             # Tipos del dominio (Sala, Partida, Ruta, etc.)
+└── middleware.ts              # Protección de rutas
+scripts/db/
+├── seed-firestore.mjs         # Inicializa schema de colecciones
+├── deploy-rules.mjs           # Despliega reglas de seguridad vía API
+└── get-rules.mjs              # Consulta reglas desplegadas
+firestore.rules                # Reglas de seguridad de Firestore
+storage.rules                  # Reglas de seguridad de Storage
+```
 
-Prueba de commit
+---
+
+## Roles
+
+```
+Superadmin > Admin > Gestor de Partidas > Usuario
+```
+
+Almacenado en `usuarios/{uid}.rol` como string. Los admins/gestores tienen acceso a funciones de creación de contenido.
+
+---
+
+## Estado de implementación
+
+### ✅ Hecho
+- Auth (login/logout, protección de rutas, middleware)
+- Perfil de usuario (onboarding, edición, roles)
+- Listado de salas con filtros por dificultad
+- Ficha de sala con valoraciones y lista de partidas
+- Navegación (AppNav responsive con menú de usuario)
+- Reglas de Firestore y Storage desplegadas
+
+### 🚧 En desarrollo
+- Crear / editar sala (Admin+)
+- Crear / editar partida (Gestor+)
+- Unirse a una partida
+- Rutas (itinerarios)
+- Comentarios y votaciones
+- Fotos
+
+### ⬜ Pendiente
+- Panel de administración
+- Notificaciones
+- Cloud Functions
+- Deploy en Firebase Hosting
+- Google Login
+- FAQ
