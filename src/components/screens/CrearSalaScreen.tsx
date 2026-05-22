@@ -56,12 +56,14 @@ export function CrearSalaScreen() {
   const { user, perfil } = useAuthStore();
   const [coordsPreview, setCoordsPreview] = useState<{ lat: number; lng: number } | null>(null);
   const [coordsError, setCoordsError] = useState<string | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -107,12 +109,40 @@ export function CrearSalaScreen() {
     }
 
     const coords = extractCoordsFromGoogleMapsUrl(resolvedUrl);
-    if (coords) {
-      setCoordsPreview(coords);
-    } else {
+    if (!coords) {
       setCoordsError(
         "No se pudieron extraer las coordenadas. Asegúrate de que la URL incluya la ubicación exacta (abre Google Maps, busca el lugar, y copia la URL del navegador)."
       );
+      return;
+    }
+
+    setCoordsPreview(coords);
+    fillAddressFromCoords(coords.lat, coords.lng);
+  }
+
+  async function fillAddressFromCoords(lat: number, lng: number) {
+    setGeocoding(true);
+    try {
+      const res = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const a = data.address ?? {};
+
+      const calle = [a.road, a.house_number].filter(Boolean).join(" ");
+      const ciudad = a.city ?? a.town ?? a.village ?? a.municipality ?? "";
+      const provincia = a.county ?? a.state_district ?? a.state ?? "";
+      const cp = a.postcode ?? "";
+      const pais = (a.country_code ?? "es").toUpperCase();
+
+      if (calle) setValue("calle", calle, { shouldValidate: false });
+      if (ciudad) setValue("ciudad", ciudad, { shouldValidate: false });
+      if (provincia) setValue("provincia", provincia, { shouldValidate: false });
+      if (cp) setValue("cp", cp, { shouldValidate: false });
+      setValue("pais", pais, { shouldValidate: false });
+    } catch {
+      // El relleno automático es opcional; si falla, el usuario rellena manualmente
+    } finally {
+      setGeocoding(false);
     }
   }
 
@@ -172,7 +202,10 @@ export function CrearSalaScreen() {
               placeholder="https://www.google.com/maps/place/..."
               className={`${inputCls} ${coordsError ? "border-red-300 focus:ring-red-400" : coordsPreview ? "border-teal-400" : ""}`}
             />
-            {coordsPreview && (
+            {geocoding && (
+              <p className="text-xs text-slate-400 mt-1 animate-pulse">Obteniendo dirección...</p>
+            )}
+            {coordsPreview && !geocoding && (
               <p className="flex items-center gap-1 text-xs text-teal-600 mt-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 Coordenadas extraídas: {coordsPreview.lat.toFixed(5)}, {coordsPreview.lng.toFixed(5)}
