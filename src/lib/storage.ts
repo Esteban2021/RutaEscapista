@@ -14,3 +14,17 @@ export async function uploadSalaImage(
   });
   return getDownloadURL(snap.ref);
 }
+
+export async function uploadAvatar(
+  uid: string,
+  type: "main" | "original",
+  blob: Blob,
+  ext: string
+): Promise<string> {
+  const filename = type === "main" ? `main.jpg` : `original.${ext}`;
+  const storageRef = ref(storage, `avatars/${uid}/${filename}`);
+  const snap = await uploadBytes(storageRef, blob, {
+    contentType: type === "main" ? "image/jpeg" : blob.type || "image/jpeg",
+  });
+  return getDownloadURL(snap.ref);
+}

@@ -7,6 +7,7 @@ export interface Usuario {
   nick: string;
   nombre?: string;
   fotoUrl?: string;
+  fotoOriginalUrl?: string;
   rol: Rol;
   pais?: string;
   provincia?: string;

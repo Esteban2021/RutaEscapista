@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useState } from "react";
+import Image from "next/image";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/authStore";
@@ -94,7 +95,17 @@ export function AppNav() {
                 onClick={() => setUserMenuOpen((v) => !v)}
                 className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
               >
-                <UserCircle className="w-5 h-5 text-[#0D9488]" />
+                {perfil?.fotoUrl ? (
+                  <Image
+                    src={perfil.fotoUrl}
+                    alt={perfil.nick}
+                    width={28}
+                    height={28}
+                    className="rounded-full object-cover"
+                  />
+                ) : (
+                  <UserCircle className="w-7 h-7 text-[#0D9488]" />
+                )}
                 <span className="hidden md:block text-sm font-medium text-[#334155]">
                   {perfil?.nick || user.email?.split("@")[0]}
                 </span>

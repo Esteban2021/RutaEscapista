@@ -25,7 +25,7 @@ export async function getOrCreatePerfil(uid: string): Promise<Usuario> {
 
 export async function updatePerfil(
   uid: string,
-  data: Partial<Pick<Usuario, "nick" | "nombre" | "pais" | "provincia" | "fotoUrl">>
+  data: Partial<Pick<Usuario, "nick" | "nombre" | "pais" | "provincia" | "fotoUrl" | "fotoOriginalUrl">>
 ): Promise<void> {
   await updateDoc(doc(db, "usuarios", uid), data);
 }

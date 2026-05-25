@@ -5,8 +5,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import Image from "next/image";
+import { UserCircle } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { updatePerfil } from "@/lib/usuarios";
+import { uploadAvatar } from "@/lib/storage";
+import { ImageCropPicker } from "@/components/ui/ImageCropPicker";
+
+const AVATAR_SIZE = 200; // crop area: 200×200 px
 
 const schema = z.object({
   nick: z
@@ -21,6 +27,9 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+const inputCls =
+  "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500";
+
 export function PerfilEditarScreen() {
   const router = useRouter();
   const { user, perfil, setPerfil } = useAuthStore();
@@ -30,6 +39,7 @@ export function PerfilEditarScreen() {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -40,6 +50,16 @@ export function PerfilEditarScreen() {
       provincia: perfil?.provincia ?? "",
     },
   });
+
+  async function handleAvatarSave(cardBlob: Blob, originalBlob: Blob, ext: string) {
+    if (!user || !perfil) return;
+    const [fotoUrl, fotoOriginalUrl] = await Promise.all([
+      uploadAvatar(user.uid, "main", cardBlob, "jpg"),
+      uploadAvatar(user.uid, "original", originalBlob, ext),
+    ]);
+    await updatePerfil(user.uid, { fotoUrl, fotoOriginalUrl });
+    setPerfil({ ...perfil, fotoUrl, fotoOriginalUrl });
+  }
 
   async function onSubmit(data: FormValues) {
     if (!user || !perfil) return;
@@ -59,71 +79,80 @@ export function PerfilEditarScreen() {
     }
   }
 
+  const nick = watch("nick");
+
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
       <div className="max-w-lg mx-auto px-4 py-8">
-        <div className="bg-white rounded-xl shadow-sm p-6">
-          <h1 className="text-xl font-bold text-[#334155] mb-1">
+        <div className="bg-white rounded-xl shadow-sm p-6 space-y-6">
+          <h1 className="text-xl font-bold text-[#334155]">
             {isOnboarding ? "Completa tu perfil" : "Editar perfil"}
           </h1>
           {isOnboarding && (
-            <p className="text-sm text-slate-500 mb-2">
+            <p className="text-sm text-slate-500 -mt-4">
               Elige un nick para continuar.
             </p>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 mt-5">
+          {/* Datos del perfil */}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-[#334155] mb-1">
                 Nick <span className="text-red-500">*</span>
               </label>
-              <input
-                {...register("nick")}
-                placeholder="Tu nick público"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              {errors.nick && (
-                <p className="text-xs text-red-500 mt-1">{errors.nick.message}</p>
-              )}
+              <input {...register("nick")} placeholder="Tu nick público" className={inputCls} />
+              {errors.nick && <p className="text-xs text-red-500 mt-1">{errors.nick.message}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-[#334155] mb-1">
-                Nombre real{" "}
-                <span className="text-slate-400 font-normal">(opcional)</span>
+                Nombre real <span className="text-slate-400 font-normal">(opcional)</span>
               </label>
-              <input
-                {...register("nombre")}
-                placeholder="Solo visible para ti"
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-              {errors.nombre && (
-                <p className="text-xs text-red-500 mt-1">{errors.nombre.message}</p>
-              )}
+              <input {...register("nombre")} placeholder="Solo visible para ti" className={inputCls} />
+              {errors.nombre && <p className="text-xs text-red-500 mt-1">{errors.nombre.message}</p>}
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-[#334155] mb-1">
-                  País
-                </label>
-                <input
-                  {...register("pais")}
-                  placeholder="España"
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <label className="block text-sm font-medium text-[#334155] mb-1">País</label>
+                <input {...register("pais")} placeholder="España" className={inputCls} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#334155] mb-1">
-                  Provincia
-                </label>
-                <input
-                  {...register("provincia")}
-                  placeholder="Madrid"
-                  className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                />
+                <label className="block text-sm font-medium text-[#334155] mb-1">Provincia</label>
+                <input {...register("provincia")} placeholder="Madrid" className={inputCls} />
               </div>
             </div>
+
+            {/* Foto de perfil */}
+            {!isOnboarding && (
+              <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium text-[#334155]">Foto de perfil</p>
+                  {perfil?.fotoUrl ? (
+                    <Image
+                      src={perfil.fotoUrl}
+                      alt={perfil.nick}
+                      width={36}
+                      height={36}
+                      className="rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-teal-100 flex items-center justify-center">
+                      <UserCircle className="w-6 h-6 text-teal-600" />
+                    </div>
+                  )}
+                </div>
+                <ImageCropPicker
+                  cropW={AVATAR_SIZE}
+                  cropH={AVATAR_SIZE}
+                  shape="circle"
+                  avatarLabel={nick || perfil?.nick}
+                  currentCardUrl={perfil?.fotoUrl}
+                  canvasBackground="#f0fdfa"
+                  onSave={handleAvatarSave}
+                />
+              </div>
+            )}
 
             {error && <p className="text-sm text-red-500">{error}</p>}
 
