@@ -36,8 +36,13 @@ function SalaCard({ sala }: { sala: Sala }) {
       href={`/sala/${sala.id}`}
       className="block bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden"
     >
-      <div className="h-36 bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center">
-        <span className="text-4xl">🔐</span>
+      <div className="h-36 bg-gradient-to-br from-teal-100 to-teal-200 flex items-center justify-center overflow-hidden">
+        {sala.imagenUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={sala.imagenUrl} alt={sala.nombreSala} className="w-full h-full object-cover" />
+        ) : (
+          <span className="text-4xl">🔐</span>
+        )}
       </div>
       <div className="p-4 space-y-2">
         <h3 className="font-semibold text-[#334155] truncate">{sala.nombreSala}</h3>

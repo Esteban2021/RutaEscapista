@@ -34,6 +34,8 @@ export interface Sala {
   fechaCierre?: Timestamp;
   fechaCreacion: Timestamp;
   creadorId: string;
+  imagenUrl?: string;
+  imagenOriginalUrl?: string;
   fotosTotales: number;
   valoraciones: {
     mediaGeneral: number;     totalVotosGeneral: number;

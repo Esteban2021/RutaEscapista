@@ -7,6 +7,7 @@ const AUTH_ONLY_REDIRECT = ["/login", "/registro"];
 
 function isPublicRoute(pathname: string): boolean {
   if (PUBLIC_EXACT.includes(pathname)) return true;
+  if (pathname.endsWith("/editar")) return false;
   return PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 }
 

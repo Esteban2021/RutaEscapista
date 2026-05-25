@@ -6,16 +6,20 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, MapPin, CheckCircle2, Loader2, Search,
   AlertTriangle, PenLine, RotateCcw,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { crearSala } from "@/lib/salas";
+import { getSala, updateSala } from "@/lib/salas";
+import { uploadSalaImage } from "@/lib/storage";
+import { ImageCropPicker } from "@/components/ui/ImageCropPicker";
 import {
   extractCoordsFromGoogleMapsUrl, isGoogleMapsUrl, isShortGoogleMapsUrl,
   isPlusCode, isShortPlusCode, decodePlusCode, recoverPlusCode, parsePlusCodeInput,
 } from "@/lib/geocoding";
+import type { Sala } from "@/types";
 
 const schema = z.object({
   nombreSala: z.string().min(2, "Mínimo 2 caracteres").max(100, "Máximo 100 caracteres").trim(),
@@ -34,6 +38,7 @@ const schema = z.object({
       message: "Entre 10 y 360 minutos",
     }),
   dificultad: z.enum(["facil", "media", "dificil"]).optional(),
+  estado: z.enum(["activa", "cerrada", "archivada"]),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -57,12 +62,16 @@ function Field({
 const inputCls =
   "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed";
 
-export function CrearSalaScreen() {
+function EditarSalaForm({ sala, salaId }: { sala: Sala; salaId: string }) {
   const router = useRouter();
-  const { user, perfil } = useAuthStore();
+  const queryClient = useQueryClient();
 
-  const [coordsPreview, setCoordsPreview] = useState<{ lat: number; lng: number } | null>(null);
-  const [coordsSource, setCoordsSource] = useState<"maps" | "pluscode" | "manual" | null>(null);
+  const [coordsPreview, setCoordsPreview] = useState<{ lat: number; lng: number } | null>(
+    sala.coordenadas ? { lat: sala.coordenadas.lat, lng: sala.coordenadas.lng } : null
+  );
+  const [coordsSource, setCoordsSource] = useState<"maps" | "pluscode" | "manual" | null>(
+    sala.coordenadas ? "manual" : null
+  );
   const [mapsError, setMapsError] = useState<string | null>(null);
   const [processingUrl, setProcessingUrl] = useState(false);
   const [plusCode, setPlusCode] = useState("");
@@ -70,7 +79,6 @@ export function CrearSalaScreen() {
   const [processingPlusCode, setProcessingPlusCode] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // Modo manual
   const [manualMode, setManualMode] = useState(false);
   const [showManualWarning, setShowManualWarning] = useState(false);
   const [manualLat, setManualLat] = useState("");
@@ -85,20 +93,21 @@ export function CrearSalaScreen() {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { pais: "ES" },
+    defaultValues: {
+      nombreSala: sala.nombreSala,
+      descripcion: sala.descripcion ?? "",
+      webOficial: sala.webOficial ?? "",
+      googleMapsUrl: "",
+      calle: sala.direccion?.calle ?? "",
+      ciudad: sala.direccion?.ciudad ?? "",
+      provincia: sala.direccion?.provincia ?? "",
+      cp: sala.direccion?.cp ?? "",
+      pais: sala.direccion?.pais ?? "ES",
+      duracionMinutos: sala.duracionMinutos?.toString() ?? "",
+      dificultad: sala.dificultad,
+      estado: sala.estado ?? "activa",
+    },
   });
-
-  if (!perfil || !["admin", "superadmin"].includes(perfil.rol)) {
-    return (
-      <div className="max-w-lg mx-auto px-4 py-16 text-center text-slate-400">
-        <p className="text-4xl mb-3">🔒</p>
-        <p className="font-medium">Solo los administradores pueden crear salas</p>
-        <Link href="/salas" className="text-[#0D9488] text-sm mt-2 block">
-          Volver al listado
-        </Link>
-      </div>
-    );
-  }
 
   async function fillAddressFromCoords(lat: number, lng: number) {
     try {
@@ -116,7 +125,7 @@ export function CrearSalaScreen() {
       if (provincia) setValue("provincia", provincia, { shouldValidate: false });
       if (cp) setValue("cp", cp, { shouldValidate: false });
       setValue("pais", pais, { shouldValidate: false });
-    } catch { /* el relleno automático es opcional */ }
+    } catch { /* opcional */ }
   }
 
   async function processUrl(url: string) {
@@ -140,7 +149,6 @@ export function CrearSalaScreen() {
         if (data.expanded) resolvedUrl = data.expanded;
         else { setMapsError("No se pudo expandir el enlace corto. Inténtalo de nuevo."); return; }
       }
-
       const coords = extractCoordsFromGoogleMapsUrl(resolvedUrl);
       if (!coords) {
         setMapsError("No se pudieron extraer las coordenadas. Asegúrate de pegar la URL del navegador.");
@@ -163,22 +171,15 @@ export function CrearSalaScreen() {
 
     if (isPlusCode(value)) {
       const { code, place } = parsePlusCodeInput(value);
-
       if (!isShortPlusCode(value)) {
         const coords = decodePlusCode(code);
-        if (coords) {
-          setCoordsPreview(coords);
-          setCoordsSource("pluscode");
-          fillAddressFromCoords(coords.lat, coords.lng);
-        }
+        if (coords) { setCoordsPreview(coords); setCoordsSource("pluscode"); fillAddressFromCoords(coords.lat, coords.lng); }
         return;
       }
-
       if (!place) {
         setPlusCodeError("Añade el nombre de la ciudad después del código. Ej: J4XP+86 Tàrrega");
         return;
       }
-
       setProcessingPlusCode(true);
       try {
         const res = await fetch(`/api/geocode-place?q=${encodeURIComponent(place)}`);
@@ -194,15 +195,11 @@ export function CrearSalaScreen() {
       return;
     }
 
-    // Dirección de texto libre
     if (value.trim().length < 5) return;
     setProcessingPlusCode(true);
     try {
       const res = await fetch(`/api/geocode-place?q=${encodeURIComponent(value)}`);
-      if (!res.ok) {
-        setPlusCodeError("No se encontró esa dirección. Revisa el texto o usa otro método.");
-        return;
-      }
+      if (!res.ok) { setPlusCodeError("No se encontró esa dirección. Revisa el texto o usa otro método."); return; }
       const { lat, lng } = await res.json();
       setCoordsPreview({ lat, lng });
       setCoordsSource("pluscode");
@@ -218,10 +215,7 @@ export function CrearSalaScreen() {
     setPlusCode(value);
     setPlusCodeError(null);
     if (coordsSource === "pluscode") { setCoordsPreview(null); setCoordsSource(null); }
-    // Plus Code completo: resolver al instante
-    if (isPlusCode(value) && !isShortPlusCode(value)) {
-      resolveLocationText(value);
-    }
+    if (isPlusCode(value) && !isShortPlusCode(value)) resolveLocationText(value);
   }
 
   function resetLocation() {
@@ -246,10 +240,13 @@ export function CrearSalaScreen() {
     }
   }
 
-  function activateManualMode() {
-    setManualMode(true);
-    setShowManualWarning(false);
-    setMapsError(null);
+  async function handleImageSave(cardBlob: Blob, originalBlob: Blob, ext: string) {
+    const [cardUrl, originalUrl] = await Promise.all([
+      uploadSalaImage(salaId, "card", cardBlob, "jpg"),
+      uploadSalaImage(salaId, "original", originalBlob, ext),
+    ]);
+    await updateSala(salaId, { imagenUrl: cardUrl, imagenOriginalUrl: originalUrl });
+    queryClient.invalidateQueries({ queryKey: ["sala", salaId] });
   }
 
   async function onSubmit(data: FormValues) {
@@ -258,10 +255,9 @@ export function CrearSalaScreen() {
       else setMapsError("Las coordenadas son obligatorias.");
       return;
     }
-    if (!user) return;
     setSubmitError(null);
     try {
-      await crearSala({
+      await updateSala(salaId, {
         nombreSala: data.nombreSala,
         descripcion: data.descripcion,
         webOficial: data.webOficial || undefined,
@@ -272,13 +268,13 @@ export function CrearSalaScreen() {
         pais: data.pais,
         lat: coordsPreview.lat,
         lng: coordsPreview.lng,
-        duracionMinutos: data.duracionMinutos ? parseInt(data.duracionMinutos, 10) : undefined,
-        dificultad: data.dificultad,
-        creadorId: user.uid,
+        duracionMinutos: data.duracionMinutos ? parseInt(data.duracionMinutos, 10) : null,
+        dificultad: data.dificultad ?? null,
+        estado: data.estado,
       });
-      router.push("/salas");
+      router.push(`/sala/${salaId}`);
     } catch {
-      setSubmitError("Error al guardar la sala. Inténtalo de nuevo.");
+      setSubmitError("Error al guardar los cambios. Inténtalo de nuevo.");
     }
   }
 
@@ -292,13 +288,13 @@ export function CrearSalaScreen() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      <Link href="/salas" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-[#0D9488] mb-4">
+      <Link href={`/sala/${salaId}`} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-[#0D9488] mb-4">
         <ArrowLeft className="w-4 h-4" />
-        Salas
+        Volver a la sala
       </Link>
 
       <div className="bg-white rounded-xl shadow-sm p-6">
-        <h1 className="text-xl font-bold text-[#334155] mb-6">Nueva sala de escape</h1>
+        <h1 className="text-xl font-bold text-[#334155] mb-6">Editar sala</h1>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {/* Nombre */}
@@ -306,98 +302,14 @@ export function CrearSalaScreen() {
             <input {...register("nombreSala")} placeholder="Ej: Sala del Terror" className={inputCls} />
           </Field>
 
-          {/* Ubicación — contenedor bordeado */}
+          {/* Ubicación */}
           {!manualMode && (
             <div className="border border-slate-200 rounded-xl p-4 space-y-4">
               <p className="text-sm font-medium text-[#334155]">
                 Ubicación <span className="text-red-500">*</span>
               </p>
 
-              {/* Opción A: Plus Code o dirección */}
-              <div className={`space-y-2 transition-opacity ${plusCodeDisabled ? "opacity-40 pointer-events-none" : ""}`}>
-                <p className="text-xs font-medium text-blue-500 uppercase tracking-wide">
-                  Plus Code o dirección
-                </p>
-                <div className="relative flex gap-2">
-                  <input
-                    value={plusCode}
-                    onChange={(e) => handlePlusCodeChange(e.target.value)}
-                    onBlur={(e) => { if (!coordsPreview && !processingPlusCode) resolveLocationText(e.target.value); }}
-                    disabled={plusCodeDisabled}
-                    placeholder="Ej: 8FVC9G8F+6W · J4XP+86 Tàrrega · Carrer de Sant Eloi 18, Tàrrega"
-                    className={`${inputCls} ${plusCodeError ? "border-red-300 focus:ring-red-400" : coordsSource === "pluscode" ? "border-teal-400" : ""}`}
-                  />
-                  {(!!plusCode && !coordsPreview && !processingPlusCode) && (
-                    <button
-                      type="button"
-                      onClick={() => resolveLocationText(plusCode)}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-[#0D9488] hover:bg-teal-50 transition-colors"
-                    >
-                      <Search className="w-4 h-4" />
-                      Buscar
-                    </button>
-                  )}
-                  {processingPlusCode && (
-                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />
-                  )}
-                </div>
-                {processingPlusCode && (
-                  <p className="text-xs text-slate-400 animate-pulse">Buscando ubicación...</p>
-                )}
-                {plusCodeError && <p className="text-xs text-red-500">{plusCodeError}</p>}
-                {!coordsPreview && !plusCodeError && !processingPlusCode && (
-                  <p className="text-xs text-slate-400">
-                    Acepta Plus Code completo, código corto con ciudad, o dirección completa
-                  </p>
-                )}
-              </div>
-
-              {/* Divisor */}
-              <div className="flex items-center gap-3">
-                <hr className="flex-1 border-slate-200" />
-                <span className="text-xs text-blue-500 font-medium">o</span>
-                <hr className="flex-1 border-slate-200" />
-              </div>
-
-              {/* Opción B: Google Maps URL */}
-              <div className={`space-y-2 transition-opacity ${mapsDisabled ? "opacity-40 pointer-events-none" : ""}`}>
-                <p className="text-xs font-medium text-blue-500 uppercase tracking-wide">
-                  Enlace de Google Maps
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    {...register("googleMapsUrl")}
-                    onPaste={(e) => { const url = e.clipboardData.getData("text"); if (url) processUrl(url); }}
-                    onBlur={(e) => { if (!coordsPreview && !processingUrl) processUrl(e.target.value); }}
-                    disabled={mapsDisabled}
-                    placeholder="https://www.google.com/maps/place/..."
-                    className={`${inputCls} ${mapsError ? "border-red-300 focus:ring-red-400" : coordsSource === "maps" ? "border-teal-400" : ""}`}
-                  />
-                  {(showValidarBtn || processingUrl) && (
-                    <button
-                      type="button"
-                      onClick={() => processUrl(mapsUrl ?? "")}
-                      disabled={processingUrl}
-                      className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-[#0D9488] hover:bg-teal-50 transition-colors disabled:opacity-50"
-                    >
-                      {processingUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-                      {processingUrl ? "..." : "Validar"}
-                    </button>
-                  )}
-                </div>
-                {processingUrl && (
-                  <p className="text-xs text-slate-400 animate-pulse">Obteniendo dirección...</p>
-                )}
-                {mapsError && <p className="text-xs text-red-500">{mapsError}</p>}
-                {!coordsPreview && !mapsError && !processingUrl && (
-                  <p className="text-xs text-slate-400 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" />
-                    Pega el enlace del navegador o usa &ldquo;Compartir → Copiar enlace&rdquo;
-                  </p>
-                )}
-              </div>
-
-              {/* Confirmación de coordenadas */}
+              {/* Coordenadas confirmadas */}
               {coordsPreview && (
                 <div className="flex items-center justify-between bg-teal-50 rounded-xl px-3 py-2">
                   <p className="flex items-center gap-1.5 text-xs text-teal-700 font-medium">
@@ -423,49 +335,122 @@ export function CrearSalaScreen() {
                 </div>
               )}
 
-              {/* Introducir manualmente */}
+              {/* Picker: solo cuando no hay coords */}
               {!coordsPreview && (
-                <div>
-                  {!showManualWarning ? (
-                    <button
-                      type="button"
-                      onClick={() => setShowManualWarning(true)}
-                      className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                      <PenLine className="w-3.5 h-3.5" />
-                      Introducir coordenadas manualmente
-                    </button>
-                  ) : (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
-                      <div className="flex items-start gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-amber-800">Las coordenadas son obligatorias</p>
-                          <p className="text-xs text-amber-700 mt-0.5">
-                            Sin coordenadas la sala no aparecerá en el mapa ni podrá usarse en rutas.
-                            Si continúas deberás introducirlas a mano (latitud y longitud).
-                          </p>
+                <>
+                  {/* Opción A: Plus Code o dirección */}
+                  <div className={`space-y-2 transition-opacity ${plusCodeDisabled ? "opacity-40 pointer-events-none" : ""}`}>
+                    <p className="text-xs font-medium text-blue-500 uppercase tracking-wide">Plus Code o dirección</p>
+                    <div className="relative flex gap-2">
+                      <input
+                        value={plusCode}
+                        onChange={(e) => handlePlusCodeChange(e.target.value)}
+                        onBlur={(e) => { if (!coordsPreview && !processingPlusCode) resolveLocationText(e.target.value); }}
+                        disabled={plusCodeDisabled}
+                        placeholder="Ej: 8FVC9G8F+6W · J4XP+86 Tàrrega · Carrer de Sant Eloi 18, Tàrrega"
+                        className={`${inputCls} ${plusCodeError ? "border-red-300 focus:ring-red-400" : ""}`}
+                      />
+                      {(!!plusCode && !coordsPreview && !processingPlusCode) && (
+                        <button
+                          type="button"
+                          onClick={() => resolveLocationText(plusCode)}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-[#0D9488] hover:bg-teal-50 transition-colors"
+                        >
+                          <Search className="w-4 h-4" />
+                          Buscar
+                        </button>
+                      )}
+                      {processingPlusCode && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 animate-spin text-slate-400" />
+                      )}
+                    </div>
+                    {plusCodeError && <p className="text-xs text-red-500">{plusCodeError}</p>}
+                    {!plusCodeError && !processingPlusCode && (
+                      <p className="text-xs text-slate-400">Plus Code completo, código corto con ciudad, o dirección completa</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <hr className="flex-1 border-slate-200" />
+                    <span className="text-xs text-blue-500 font-medium">o</span>
+                    <hr className="flex-1 border-slate-200" />
+                  </div>
+
+                  {/* Opción B: Google Maps */}
+                  <div className={`space-y-2 transition-opacity ${mapsDisabled ? "opacity-40 pointer-events-none" : ""}`}>
+                    <p className="text-xs font-medium text-blue-500 uppercase tracking-wide">Enlace de Google Maps</p>
+                    <div className="flex gap-2">
+                      <input
+                        {...register("googleMapsUrl")}
+                        onPaste={(e) => { const url = e.clipboardData.getData("text"); if (url) processUrl(url); }}
+                        onBlur={(e) => { if (!coordsPreview && !processingUrl) processUrl(e.target.value); }}
+                        disabled={mapsDisabled}
+                        placeholder="https://www.google.com/maps/place/..."
+                        className={`${inputCls} ${mapsError ? "border-red-300 focus:ring-red-400" : ""}`}
+                      />
+                      {(showValidarBtn || processingUrl) && (
+                        <button
+                          type="button"
+                          onClick={() => processUrl(mapsUrl ?? "")}
+                          disabled={processingUrl}
+                          className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border border-slate-200 text-sm font-medium text-[#0D9488] hover:bg-teal-50 transition-colors disabled:opacity-50"
+                        >
+                          {processingUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                          {processingUrl ? "..." : "Validar"}
+                        </button>
+                      )}
+                    </div>
+                    {mapsError && <p className="text-xs text-red-500">{mapsError}</p>}
+                    {!mapsError && !processingUrl && (
+                      <p className="text-xs text-slate-400 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        Pega el enlace del navegador o usa &ldquo;Compartir → Copiar enlace&rdquo;
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Intro manual */}
+                  <div>
+                    {!showManualWarning ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowManualWarning(true)}
+                        className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <PenLine className="w-3.5 h-3.5" />
+                        Introducir coordenadas manualmente
+                      </button>
+                    ) : (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 space-y-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-amber-800">Las coordenadas son obligatorias</p>
+                            <p className="text-xs text-amber-700 mt-0.5">
+                              Sin coordenadas la sala no aparecerá en el mapa ni podrá usarse en rutas.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setShowManualWarning(false)}
+                            className="flex-1 text-xs px-3 py-2 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setManualMode(true); setShowManualWarning(false); }}
+                            className="flex-1 text-xs px-3 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors font-medium"
+                          >
+                            Continuar manualmente
+                          </button>
                         </div>
                       </div>
-                      <div className="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setShowManualWarning(false)}
-                          className="flex-1 text-xs px-3 py-2 rounded-lg border border-amber-200 text-amber-700 hover:bg-amber-100 transition-colors font-medium"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={activateManualMode}
-                          className="flex-1 text-xs px-3 py-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors font-medium"
-                        >
-                          Continuar manualmente
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                    )}
+                  </div>
+                </>
               )}
             </div>
           )}
@@ -523,15 +508,7 @@ export function CrearSalaScreen() {
 
           {/* Dirección */}
           <div className={`space-y-3 transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
-            <p className="text-sm font-medium text-[#334155]">
-              Dirección
-              {locked && <span className="text-xs text-slate-400 font-normal ml-2">(se rellena automáticamente)</span>}
-            </p>
-            {coordsPreview && (
-              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Confirma que la dirección es correcta y actualízala manualmente si no lo es.
-              </p>
-            )}
+            <p className="text-sm font-medium text-[#334155]">Dirección</p>
             <Field label="Calle y número" error={errors.calle?.message}>
               <input {...register("calle")} disabled={locked} placeholder="Calle Mayor 12" className={inputCls} />
             </Field>
@@ -554,11 +531,10 @@ export function CrearSalaScreen() {
           </div>
 
           {/* Duración y dificultad */}
-          <div className={`grid grid-cols-2 gap-3 transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Duración (minutos)" error={errors.duracionMinutos?.message}>
               <input
                 {...register("duracionMinutos")}
-                disabled={locked}
                 type="number"
                 min={10}
                 max={360}
@@ -567,7 +543,7 @@ export function CrearSalaScreen() {
               />
             </Field>
             <Field label="Dificultad" error={errors.dificultad?.message}>
-              <select {...register("dificultad")} disabled={locked} className={inputCls}>
+              <select {...register("dificultad")} className={inputCls}>
                 <option value="">Sin especificar</option>
                 <option value="facil">Fácil</option>
                 <option value="media">Media</option>
@@ -577,30 +553,49 @@ export function CrearSalaScreen() {
           </div>
 
           {/* Descripción */}
-          <div className={`transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
-            <Field label="Descripción" error={errors.descripcion?.message}>
-              <textarea
-                {...register("descripcion")}
-                disabled={locked}
-                rows={4}
-                placeholder="Describe la sala: temática, número de jugadores recomendado..."
-                className={`${inputCls} resize-none`}
-              />
-            </Field>
-          </div>
+          <Field label="Descripción" error={errors.descripcion?.message}>
+            <textarea
+              {...register("descripcion")}
+              rows={4}
+              placeholder="Describe la sala: temática, número de jugadores recomendado..."
+              className={`${inputCls} resize-none`}
+            />
+          </Field>
 
           {/* Web oficial */}
-          <div className={`transition-opacity ${locked ? "opacity-40 pointer-events-none" : ""}`}>
-            <Field label="Web oficial" error={errors.webOficial?.message}>
-              <input
-                {...register("webOficial")}
-                disabled={locked}
-                type="url"
-                placeholder="https://www.escaperoomejemplo.com"
-                className={inputCls}
-              />
-            </Field>
+          <Field label="Web oficial" error={errors.webOficial?.message}>
+            <input
+              {...register("webOficial")}
+              type="url"
+              placeholder="https://www.escaperoomejemplo.com"
+              className={inputCls}
+            />
+          </Field>
+
+          {/* Imagen de portada */}
+          <div className="border border-slate-200 rounded-xl p-4 space-y-4">
+            <p className="text-sm font-medium text-[#334155]">Imagen de portada</p>
+            <ImageCropPicker
+              salaInfo={{
+                nombreSala: watch("nombreSala") || sala.nombreSala,
+                ciudad: watch("ciudad") || sala.direccion?.ciudad,
+                provincia: watch("provincia") || sala.direccion?.provincia,
+                dificultad: watch("dificultad") || sala.dificultad,
+                duracionMinutos: sala.duracionMinutos,
+              }}
+              currentCardUrl={sala.imagenUrl}
+              onSave={handleImageSave}
+            />
           </div>
+
+          {/* Estado */}
+          <Field label="Estado" error={errors.estado?.message}>
+            <select {...register("estado")} className={inputCls}>
+              <option value="activa">Activa</option>
+              <option value="cerrada">Cerrada</option>
+              <option value="archivada">Archivada</option>
+            </select>
+          </Field>
 
           {submitError && <p className="text-sm text-red-500">{submitError}</p>}
 
@@ -617,11 +612,55 @@ export function CrearSalaScreen() {
               disabled={!canSubmit}
               className="flex-1 bg-[#0D9488] text-white py-2.5 rounded-xl font-medium hover:bg-teal-700 transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? "Guardando..." : "Crear sala"}
+              {isSubmitting ? "Guardando..." : "Guardar cambios"}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
+}
+
+export function EditarSalaScreen({ salaId }: { salaId: string }) {
+  const { perfil } = useAuthStore();
+
+  const { data: sala, isLoading } = useQuery({
+    queryKey: ["sala", salaId],
+    queryFn: () => getSala(salaId),
+  });
+
+  if (!perfil || !["admin", "superadmin"].includes(perfil.rol)) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center text-slate-400">
+        <p className="text-4xl mb-3">🔒</p>
+        <p className="font-medium">Solo los administradores pueden editar salas</p>
+        <Link href="/salas" className="text-[#0D9488] text-sm mt-2 block">
+          Volver al listado
+        </Link>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+        <div className="h-10 w-32 bg-white rounded-xl animate-pulse" />
+        <div className="h-96 bg-white rounded-xl animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!sala) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-16 text-center text-slate-400">
+        <p className="text-4xl mb-3">🔍</p>
+        <p className="font-medium">Sala no encontrada</p>
+        <Link href="/salas" className="text-[#0D9488] text-sm mt-2 block">
+          Volver al listado
+        </Link>
+      </div>
+    );
+  }
+
+  return <EditarSalaForm sala={sala} salaId={salaId} />;
 }

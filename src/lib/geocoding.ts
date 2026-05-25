@@ -39,3 +39,49 @@ export function isGoogleMapsUrl(url: string): boolean {
 export function isShortGoogleMapsUrl(url: string): boolean {
   return /maps\.app\.goo\.gl/i.test(url);
 }
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { OpenLocationCode } = require("open-location-code") as { OpenLocationCode: new () => {
+  isValid(code: string): boolean;
+  isFull(code: string): boolean;
+  isShort(code: string): boolean;
+  decode(code: string): { latitudeCenter: number; longitudeCenter: number };
+  recoverNearest(shortCode: string, refLat: number, refLng: number): string;
+} };
+const olc = new OpenLocationCode();
+
+export function isPlusCode(input: string): boolean {
+  const code = input.trim().split(/\s+/)[0];
+  return olc.isValid(code) && (olc.isFull(code) || olc.isShort(code));
+}
+
+export function isShortPlusCode(input: string): boolean {
+  const code = input.trim().split(/\s+/)[0];
+  return olc.isValid(code) && olc.isShort(code);
+}
+
+export function decodePlusCode(input: string): CoordsResult | null {
+  try {
+    const result = olc.decode(input.trim());
+    return { lat: result.latitudeCenter, lng: result.longitudeCenter };
+  } catch {
+    return null;
+  }
+}
+
+export function recoverPlusCode(shortCode: string, refLat: number, refLng: number): CoordsResult | null {
+  try {
+    const full = olc.recoverNearest(shortCode, refLat, refLng);
+    const result = olc.decode(full);
+    return { lat: result.latitudeCenter, lng: result.longitudeCenter };
+  } catch {
+    return null;
+  }
+}
+
+export function parsePlusCodeInput(input: string): { code: string; place: string | null } {
+  const parts = input.trim().split(/\s+/);
+  const code = parts[0];
+  const place = parts.length > 1 ? parts.slice(1).join(" ") : null;
+  return { code, place };
+}
