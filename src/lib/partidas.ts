@@ -12,6 +12,7 @@ export interface CrearPartidaInput {
   hora: string;
   plazasMax: number;
   notas?: string;
+  jugadoresConfirmados?: string[];
   jugadoresPendientes?: string[];
   estado: "borrador" | "confirmada";
   creadorId: string;
@@ -30,7 +31,7 @@ export async function crearPartida(input: CrearPartidaInput): Promise<string> {
     duracionMinutos: 0,
     estado: input.estado,
     creadorId: input.creadorId,
-    jugadoresConfirmados: [input.creadorId],
+    jugadoresConfirmados: input.jugadoresConfirmados ?? [input.creadorId],
     jugadoresPendientes: (input.jugadoresPendientes ?? []).map((n) => ({ nombre: n })),
     plazasMax: input.plazasMax,
     notas: input.notas ?? "",
@@ -73,6 +74,25 @@ export async function getMisPartidas(uid: string): Promise<Partida[]> {
     .filter((d) => d.id !== "_schema")
     .map((d) => ({ id: d.id, ...d.data() } as Partida))
     .sort((a, b) => (a.fecha > b.fecha ? -1 : 1));
+}
+
+export async function updatePartida(
+  salaId: string,
+  partidaId: string,
+  data: {
+    jugadoresConfirmados: string[];
+    jugadoresPendientes: string[];
+    plazasMax: number;
+    notas: string;
+  },
+): Promise<void> {
+  await updateDoc(doc(db, "salas", salaId, "partidas", partidaId), {
+    jugadoresConfirmados: data.jugadoresConfirmados,
+    jugadoresPendientes: data.jugadoresPendientes.map((n) => ({ nombre: n })),
+    plazasMax: data.plazasMax,
+    notas: data.notas,
+    fechaActualizacion: serverTimestamp(),
+  });
 }
 
 export async function updateEstadoPartida(

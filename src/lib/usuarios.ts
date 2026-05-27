@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+﻿import { doc, getDoc, setDoc, updateDoc, serverTimestamp, collection, query, where, getDocs, limit } from "firebase/firestore";
 import { db } from "./firebase";
 import type { Usuario } from "@/types";
 
@@ -21,6 +21,21 @@ export async function getOrCreatePerfil(uid: string): Promise<Usuario> {
 
   await setDoc(doc(db, "usuarios", uid), nuevo);
   return { uid, ...nuevo, fechaCreacion: null } as unknown as Usuario;
+}
+
+export async function buscarUsuariosPorNick(nick: string): Promise<Usuario[]> {
+  if (nick.trim().length < 2) return [];
+  const term = nick.trim();
+  const q = query(
+    collection(db, "usuarios"),
+    where("nick", ">=", term),
+    where("nick", "<=", term + ""),
+    limit(8),
+  );
+  const snap = await getDocs(q);
+  return snap.docs
+    .filter((d) => d.data().nick)
+    .map((d) => ({ uid: d.id, ...d.data() } as Usuario));
 }
 
 export async function updatePerfil(
