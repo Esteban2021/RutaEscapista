@@ -145,7 +145,53 @@ Actualizar `src/middleware.ts` al añadir rutas públicas.
 
 ---
 
+## Trabajar con Firebase
 
+### Archivos de configuración
+
+| Archivo | Propósito |
+|---|---|
+| `.firebaserc` | Alias del proyecto → `rutas-punt0defuga` |
+| `firebase.json` | Apunta rules e indexes a sus archivos locales |
+| `firestore.rules` | Reglas de seguridad de Firestore (raíz del proyecto) |
+| `storage.rules` | Reglas de seguridad de Storage (raíz del proyecto) |
+
+### Reglas de seguridad
+
+Editar el archivo local y luego publicar — **no editar desde la consola web** (se sobreescribirán al siguiente deploy):
+
+```bash
+npm run rules:deploy   # publica firestore.rules + storage.rules
+npm run rules:get      # descarga las reglas actualmente activas
+```
+
+Los scripts usan la Firebase Rules REST API (`firebaserules.googleapis.com`) con el token de la service account — mismo patrón que `scripts/db/deploy-rules.mjs`.
+
+### Índices de Firestore
+
+Actualmente no hay índices creados ni script para desplegarlos.
+
+**Cómo crear un índice:** cuando Firestore lanza el error *"The query requires an index"* en la consola del navegador, el mensaje incluye un enlace directo a la consola de Firebase para crearlo con un clic. Es la forma más rápida y fiable.
+
+Si en el futuro se necesita un script de deploy (para gestionar varios índices en equipo), el patrón sería usar la Firestore REST API con el mismo token de la service account que ya usan los otros scripts:
+```
+POST https://firestore.googleapis.com/v1/projects/{project}/databases/punt0defuga/collectionGroups/{col}/indexes
+```
+
+### Base de datos nombrada
+
+El proyecto usa una base de datos **con nombre** (`punt0defuga`), no la predeterminada de Firebase.
+
+- **SDK cliente** (`src/lib/firebase.ts`): `getFirestore(app, "punt0defuga")`
+- **Admin SDK** (scripts en `scripts/db/`): `getFirestore("punt0defuga")`
+
+No se necesita la Firebase CLI — todo el acceso a Firebase se hace mediante scripts Node con el Admin SDK.
+
+### Credenciales de Admin SDK
+
+> ⚠️ **NUNCA** subir a git los archivos `*.json` de service account. Están en `.gitignore`. Si se añaden por error, revocar la clave en la consola de Firebase inmediatamente.
+
+Los scripts usan la clave en `scripts/db/rutas-punt0defuga-firebase-adminsdk-fbsvc-*.json`.
 
 ---
 
@@ -223,7 +269,7 @@ El original se guarda en `fotoOriginalUrl`; el redimensionado en `fotoUrl`.
 
 **Fase 7 — Deploy + Cloud Functions**
 - [ ] Cloud Functions: transición automática a `jugada` (server-side), recalcular valoraciones, notificaciones push
-- [ ] `firebase.json` + `.firebaserc` + Firebase Hosting deploy
+- [ ] Firebase Hosting: añadir sección `hosting` en `firebase.json` y configurar deploy de Next.js
 
 ---
 
