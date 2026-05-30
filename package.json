@@ -10,7 +10,8 @@
     "db:seed": "node scripts/db/seed.js",
     "db:schema": "node scripts/db/seed-firestore.mjs",
     "rules:deploy": "node scripts/db/deploy-rules.mjs",
-    "rules:get": "node scripts/db/get-rules.mjs"
+    "rules:get": "node scripts/db/get-rules.mjs",
+    "db:indexes": "node scripts/db/deploy-indexes.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",

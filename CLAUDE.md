@@ -45,6 +45,7 @@ npm run db:schema  # Inicializa colecciones en Firestore (ya ejecutado una vez)
 npm run db:seed        # Seed de datos de prueba (actualmente comentado)
 npm run rules:deploy   # Publica firestore.rules y storage.rules en Firebase
 npm run rules:get      # Descarga y muestra las reglas actualmente desplegadas
+npm run db:indexes     # Aplica los field overrides de firestore.indexes.json
 ```
 
 ---
@@ -155,6 +156,7 @@ Actualizar `src/middleware.ts` al añadir rutas públicas.
 | `firebase.json` | Apunta rules e indexes a sus archivos locales |
 | `firestore.rules` | Reglas de seguridad de Firestore (raíz del proyecto) |
 | `storage.rules` | Reglas de seguridad de Storage (raíz del proyecto) |
+| `firestore.indexes.json` | Field overrides de Firestore (índices single-field con scope COLLECTION_GROUP) |
 
 ### Reglas de seguridad
 
@@ -169,14 +171,20 @@ Los scripts usan la Firebase Rules REST API (`firebaserules.googleapis.com`) con
 
 ### Índices de Firestore
 
-Actualmente no hay índices creados ni script para desplegarlos.
+Los índices se definen en `firestore.indexes.json` mediante **field overrides** (sección `fieldOverrides`) y se despliegan con:
 
-**Cómo crear un índice:** cuando Firestore lanza el error *"The query requires an index"* en la consola del navegador, el mensaje incluye un enlace directo a la consola de Firebase para crearlo con un clic. Es la forma más rápida y fiable.
+```bash
+npm run db:indexes
+```
 
-Si en el futuro se necesita un script de deploy (para gestionar varios índices en equipo), el patrón sería usar la Firestore REST API con el mismo token de la service account que ya usan los otros scripts:
-```
-POST https://firestore.googleapis.com/v1/projects/{project}/databases/punt0defuga/collectionGroups/{col}/indexes
-```
+El script hace un `PATCH` sobre el campo en la Firestore REST API — es idempotente, sobreescribe la configuración del campo cada vez. Se usa `fieldOverrides` (no índices compuestos) porque las queries `array-contains` sobre un solo campo solo necesitan habilitar el scope `COLLECTION_GROUP` en el índice single-field automático.
+
+**Para añadir un field override nuevo:**
+1. Añadir la entrada en `fieldOverrides` dentro de `firestore.indexes.json`
+2. Ejecutar `npm run db:indexes`
+3. Esperar ~1 min a que esté activo
+
+Los field overrides activos pueden consultarse en Firebase Console → Firestore → Índices → pestaña **Single field**.
 
 ### Base de datos nombrada
 

@@ -1,0 +1,14 @@
+{
+  "indexes": [],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "partidas",
+      "fieldPath": "jugadoresConfirmados",
+      "_comment": "Habilita COLLECTION_GROUP scope para getMisPartidas (array-contains en collectionGroup query)",
+      "indexes": [
+        { "queryScope": "COLLECTION",       "arrayConfig": "CONTAINS" },
+        { "queryScope": "COLLECTION_GROUP", "arrayConfig": "CONTAINS" }
+      ]
+    }
+  ]
+}

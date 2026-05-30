@@ -93,6 +93,13 @@ service cloud.firestore {
     }
 
 
+    // Regla para collectionGroup("partidas") — necesaria para getMisPartidas()
+    // Sin este match con {path=**}, las queries de grupo fallan con PERMISSION_DENIED
+    match /{path=**}/partidas/{partidaId} {
+      allow read: if true;
+    }
+
+
     ////////////////////////////////////////////////////////////////////////////
     //                                  RUTAS
     ////////////////////////////////////////////////////////////////////////////

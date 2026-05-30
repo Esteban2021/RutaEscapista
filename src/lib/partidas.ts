@@ -96,11 +96,14 @@ export async function leavePartida(salaId: string, partidaId: string, uid: strin
 }
 
 export async function getMisPartidas(uid: string): Promise<Partida[]> {
+  console.log("[getMisPartidas] uid:", uid);
   const q = query(
     collectionGroup(db, "partidas"),
     where("jugadoresConfirmados", "array-contains", uid),
   );
+  console.log(q);
   const snap = await getDocs(q);
+  console.log("[getMisPartidas] docs encontrados:", snap.docs.length, snap.docs.map(d => d.ref.path));
   return snap.docs
     .filter((d) => d.id !== "_schema")
     .map((d) => ({ id: d.id, ...d.data() } as Partida))
