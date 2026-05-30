@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const PUBLIC_EXACT = ["/login", "/registro", "/salas", "/rutas"];
+const PUBLIC_EXACT = ["/login", "/registro", "/salas", "/rutas", "/faq"];
 const PUBLIC_PREFIXES = ["/sala/", "/ruta/", "/rutas", "/invitacion/"];
 const AUTH_ONLY_REDIRECT = ["/login", "/registro"];
 

@@ -18,6 +18,12 @@ export interface CrearPartidaInput {
   creadorId: string;
 }
 
+function generarToken(): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export async function crearPartida(input: CrearPartidaInput): Promise<string> {
   const [y, m, d] = input.fecha.split("-").map(Number);
   const [h, min] = input.hora.split(":").map(Number);
@@ -38,10 +44,35 @@ export async function crearPartida(input: CrearPartidaInput): Promise<string> {
     fotosCount: 0,
     votosCount: 0,
     comentariosCount: 0,
+    invitacionToken: generarToken(),
     fechaCreacion: serverTimestamp(),
     fechaActualizacion: serverTimestamp(),
   });
   return ref.id;
+}
+
+export async function reclamarJugadorPendiente(
+  salaId: string,
+  partidaId: string,
+  nombre: string,
+  uid: string,
+): Promise<void> {
+  const ref = doc(db, "salas", salaId, "partidas", partidaId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Partida no encontrada");
+
+  const pendientes = (snap.data().jugadoresPendientes ?? []) as Array<{ nombre: string }>;
+  const idx = pendientes.findIndex((j) => j.nombre === nombre);
+  if (idx === -1) throw new Error("Jugador no encontrado");
+
+  const nuevoPendientes = [...pendientes];
+  nuevoPendientes.splice(idx, 1);
+
+  await updateDoc(ref, {
+    jugadoresPendientes: nuevoPendientes,
+    jugadoresConfirmados: arrayUnion(uid),
+    fechaActualizacion: serverTimestamp(),
+  });
 }
 
 export async function getPartida(salaId: string, partidaId: string): Promise<Partida | null> {

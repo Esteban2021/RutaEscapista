@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { UserCircle, MapPin, Edit3 } from "lucide-react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { UserCircle, MapPin, Edit3, ClipboardList, Check, Clock } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { getMiPeticionGestor, crearPeticionGestor } from "@/lib/admin";
 
 const ROL_LABELS: Record<string, string> = {
   usuario: "Usuario",
@@ -14,8 +17,32 @@ const ROL_LABELS: Record<string, string> = {
 
 export function PerfilScreen() {
   const { perfil, user } = useAuthStore();
+  const [solicitando, setSolicitando] = useState(false);
+  const [solicitadoOk, setSolicitadoOk] = useState(false);
+
+  const puedesolicitarGestor = perfil?.rol === "usuario";
+
+  const { data: peticion, refetch } = useQuery({
+    queryKey: ["mi-peticion-gestor", user?.uid],
+    queryFn: () => getMiPeticionGestor(user!.uid),
+    enabled: !!user && puedesolicitarGestor,
+  });
 
   if (!perfil) return null;
+
+  async function handleSolicitar() {
+    if (!user || !perfil) return;
+    setSolicitando(true);
+    try {
+      await crearPeticionGestor(user.uid, perfil.nick, perfil.fotoUrl);
+      setSolicitadoOk(true);
+      refetch();
+    } finally {
+      setSolicitando(false);
+    }
+  }
+
+  const tienePeticionPendiente = !!peticion || solicitadoOk;
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -70,6 +97,34 @@ export function PerfilScreen() {
             <Edit3 className="w-4 h-4" />
             Editar perfil
           </Link>
+
+          {/* Solicitar Gestor */}
+          {puedesolicitarGestor && (
+            tienePeticionPendiente ? (
+              <div className="flex items-center gap-2 text-sm text-slate-500 bg-slate-50 rounded-xl px-4 py-3">
+                <Clock className="w-4 h-4 shrink-0 text-amber-500" />
+                Solicitud enviada — pendiente de revisión por un administrador
+              </div>
+            ) : (
+              <button
+                onClick={handleSolicitar}
+                disabled={solicitando}
+                className="flex items-center justify-center gap-2 w-full border border-slate-200 text-[#334155] py-2.5 rounded-xl font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                {solicitando ? (
+                  <>
+                    <Check className="w-4 h-4" />
+                    Enviando…
+                  </>
+                ) : (
+                  <>
+                    <ClipboardList className="w-4 h-4" />
+                    Solicitar ser Gestor de Partidas
+                  </>
+                )}
+              </button>
+            )
+          )}
         </div>
       </div>
     </div>

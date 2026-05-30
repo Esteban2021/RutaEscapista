@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CalendarDays, Clock, Users, StickyNote,
-  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil,
+  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil, Share2, Check,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { getPartida, joinPartida, leavePartida, updateEstadoPartida } from "@/lib/partidas";
@@ -44,6 +44,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
   const [actionLoading, setActionLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [expandedJugadores, setExpandedJugadores] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   const { data: partida, isLoading } = useQuery({
     queryKey: ["partida", salaId, partidaId],
@@ -111,6 +112,15 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
   const pendientesNombres = jugadoresPendientes.map((j) =>
     typeof j === "string" ? j : j.nombre,
   );
+
+  function handleCopyLink() {
+    if (!partida?.invitacionToken) return;
+    const url = `${window.location.origin}/invitacion/${salaId}/${partidaId}/${partida.invitacionToken}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    });
+  }
 
   async function handleJoin() {
     if (!user) return;
@@ -182,6 +192,15 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ESTADO_COLORS[partida.estado]}`}>
               {ESTADO_LABELS[partida.estado]}
             </span>
+            {canManage && partida.invitacionToken && partida.estado !== "cancelada" && (
+                <button
+                  onClick={handleCopyLink}
+                  title="Copiar enlace de invitación"
+                  className="p-1.5 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-[#0D9488] transition-colors"
+                >
+                  {copiedLink ? <Check className="w-4 h-4 text-teal-600" /> : <Share2 className="w-4 h-4" />}
+                </button>
+              )}
             {canManage &&
               (isCreador || perfil.rol !== "gestor") &&
               partida.estado !== "cancelada" &&

@@ -7,11 +7,12 @@ import Image from "next/image";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/authStore";
-import { Menu, X, UserCircle, LogOut, User, LayoutDashboard } from "lucide-react";
+import { Menu, X, UserCircle, LogOut, User, LayoutDashboard, ShieldCheck } from "lucide-react";
 
 const NAV_LINKS = [
   { href: "/salas", label: "Salas" },
   { href: "/rutas", label: "Rutas" },
+  { href: "/faq", label: "FAQ" },
 ];
 
 const AUTH_LINKS = [
@@ -133,6 +134,19 @@ export function AppNav() {
                       <User className="w-4 h-4" />
                       Mi perfil
                     </Link>
+                    {perfil && ["admin", "superadmin"].includes(perfil.rol) && (
+                      <>
+                        <hr className="my-1 border-slate-100" />
+                        <Link
+                          href="/admin"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-sm text-[#334155] hover:bg-slate-50"
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          Administración
+                        </Link>
+                      </>
+                    )}
                     <hr className="my-1 border-slate-100" />
                     <button
                       onClick={handleLogout}

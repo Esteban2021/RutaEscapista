@@ -26,8 +26,8 @@ Análisis funcional completo: [`docs/RutaEscapista_Analisis_Funcional.md`](docs/
 | Framework | Next.js 14 (App Router) |
 | Lenguaje | TypeScript |
 | Estilos | Tailwind CSS |
-| Estado cliente | Zustand (auth) + React Query (fetching, pendiente instalar) |
-| Formularios | react-hook-form + zod (pendiente instalar) |
+| Estado cliente | Zustand (auth) + React Query (`@tanstack/react-query`) |
+| Formularios | react-hook-form + zod |
 | Auth | Firebase Authentication (email+contraseña; Google login pendiente) |
 | Base de datos | Firestore — project: `rutas-punt0defuga`, database: `punt0defuga` |
 | Storage | Firebase Storage |
@@ -106,9 +106,9 @@ getFirestore("punt0defuga")
 /ruta/[rutaId]                 → Ficha de ruta
 /ruta/nueva                    → Crear ruta (Gestor+)
 /ruta/[rutaId]/editar          → Editar ruta
-/partida/[partidaId]           → Ficha de partida
-/partida/[partidaId]/editar    → Editar partida
-/invitacion/[partidaId]/[token]→ Pantalla de invitación (público)
+/sala/[salaId]/partida/[partidaId]        → Ficha de partida
+/sala/[salaId]/partida/[partidaId]/editar → Editar partida (Gestor+)
+/invitacion/[salaId]/[partidaId]/[token]  → Pantalla de invitación (público)
 /mis-partidas                  → Mis partidas
 /mis-rutas                     → Mis rutas
 /crear-sala                    → Crear sala (Admin+)
@@ -145,85 +145,85 @@ Actualizar `src/middleware.ts` al añadir rutas públicas.
 
 ---
 
-## Reglas de Firestore
 
-Ver reglas completas en [`docs/`](docs/RutaEscapista_Analisis_Funcional.md#16-reglas-de-seguridad-firestore) §16.
-
-Pendiente crear `firestore.rules` en la raíz del proyecto.
 
 ---
 
 ## Firebase Storage — estructura de carpetas
 
 ```
-/avatars/{uid}.jpg
-/salas/{salaId}/main.jpg
+/avatars/{uid}/{filename}           ← foto de perfil (jpg/png/webp)
+/salas/{salaId}/{filename}          ← imagen principal de sala
 /fotosPartidas/{partidaId}/{usuarioId}/{fotoId}.jpg
-/rutas/{rutaId}/main.jpg
+/rutas/{rutaId}/{filename}
 ```
 
-Solo JPG y PNG. Las fotos de perfil se redimensionan a 400×400 px.
+Solo JPG, PNG y WebP. Las fotos de perfil se redimensionan a 400×400 px.
+El original se guarda en `fotoOriginalUrl`; el redimensionado en `fotoUrl`.
 
 ---
 
 ## Estado de implementación
 
 ### ✅ Completado
-- Firebase SDK cliente (`src/lib/firebase.ts`)
-- Auth email+contraseña funcional
-- Login / logout con redirección
+
+**Infraestructura**
+- Firebase SDK cliente, Auth email+contraseña, login/logout con redirección
 - Middleware de protección de rutas (`src/middleware.ts`)
 - Zustand store para auth (`src/store/authStore.ts`)
-- Schema Firestore inicializado (seed ejecutado)
-- Dashboard placeholder
+- `@tanstack/react-query`, `react-hook-form`, `zod` instalados y en uso
+- Schema Firestore inicializado; `firestore.rules` + `storage.rules` desplegadas
+- Favicon: icono de puerta SVG (`src/app/icon.svg`)
 
-### ❌ Pendiente (orden sugerido)
+**Auth + Perfil**
+- Registro email+contraseña con creación de `usuarios/{uid}` en Firestore
+- Página `/perfil` con nick, foto (Storage), ubicación
+- Solicitud de ascenso a Gestor (`peticionesGestor`)
 
-**Fase 0 — Infraestructura**
-- [ ] `firestore.rules` + `storage.rules` en raíz
-- [ ] `firebase.json` + `.firebaserc`
-- [ ] Instalar `react-hook-form`, `zod`, `@tanstack/react-query`
-- [ ] Configurar colores custom en `tailwind.config.ts`
-- [ ] Eliminar fuentes Geist, usar fuente de sistema
+**Salas**
+- `/salas` — listado con filtros
+- `/sala/[salaId]` — ficha completa (info, valoraciones, fotos, comentarios placeholder)
+- `/crear-sala` — formulario con geocoding desde URL Google Maps
 
-**Fase 1 — Auth completa + Perfil**
-- [ ] Registro de nuevos usuarios (email+contraseña)
+**Partidas**
+- Crear partida en una sala (Gestor+): jugadores confirmados (búsqueda por nick), jugadores pendientes (nombre libre), checkbox "el creador juega"
+- `/sala/[salaId]/partida/[partidaId]` — ficha con card de jugadores desplegable (confirmados con avatar + pendientes sin cuenta)
+- Unirse / abandonar partida
+- Editar partida (`/sala/[salaId]/partida/[partidaId]/editar`): jugadores y notas; fecha/hora son de solo lectura con aviso
+- Estados: `borrador → confirmada → cancelada`; transición automática a `jugada` cuando `fechaHoraInicio + duracion` expira (lazy client-side); admin puede forzar manualmente
+- Flujo de invitación con token: `InvitacionScreen` + página pública `/invitacion/[salaId]/[partidaId]/[token]`; botón "Yo soy esta persona" llama a `reclamarJugadorPendiente`; botón de copiar enlace para gestores en la ficha de partida
+
+**Rutas**
+- `/rutas` — listado
+- `/ruta/[rutaId]` — ficha
+- Crear / editar ruta
+
+**Admin + FAQ**
+- Panel `/admin` con estadísticas globales
+- `/admin/gestores` — aprobar/rechazar solicitudes de Gestor (`writeBatch`: peticion + rol de usuario)
+- `/admin/reportes` — placeholder
+- Página `/faq` pública con acordeón
+
+### ❌ Pendiente
+
+**Fase 1**
 - [ ] Google Login
-- [ ] Onboarding: crear documento `usuarios/{uid}` al registrarse
-- [ ] Página `/perfil` (nick, foto, ubicación)
-- [ ] Solicitud de ascenso a Gestor
-
-**Fase 2 — Salas**
-- [ ] `/salas` — listado con filtros (país, dificultad, estado)
-- [ ] `/sala/[salaId]` — ficha (info, valoraciones, fotos, comentarios)
-- [ ] `/crear-sala` — formulario con geocoding desde URL Google Maps
-
-**Fase 3 — Partidas**
-- [ ] Crear partida en una sala (Gestor+)
-- [ ] `/partida/[partidaId]` — ficha
-- [ ] Unirse / abandonar partida
-- [ ] Gestión de jugadores confirmados / pendientes / tentativos
-- [ ] Flujo de invitación con token
 
 **Fase 4 — Contenido social**
 - [ ] Votaciones (5 categorías: General, Juegos, Ambientación, Gamemaster, Miedo)
 - [ ] Comentarios con soporte de spoilers
-- [ ] Fotos (subida a Storage, galería, reporte)
+- [ ] Fotos (subida a Storage, galería, reporte, `/admin/reportes`)
 
-**Fase 5 — Rutas**
-- [ ] `/rutas` — listado
-- [ ] `/ruta/[rutaId]` — ficha con mapa y botones Google Maps
-- [ ] Crear / editar ruta
+**Fase 5 — Rutas (resto)**
 - [ ] Copiar ruta
+- [ ] Botones Google Maps (waypoints, máx 9 por URL — dividir si hay más)
 
-**Fase 6 — Admin + Notificaciones**
-- [ ] Panel `/admin`
+**Fase 6 — Admin (resto)**
 - [ ] Centro de notificaciones
-- [ ] FAQ
 
 **Fase 7 — Deploy + Cloud Functions**
-- [ ] Cloud Functions (ver §18 del análisis)
-- [ ] Firebase Hosting deploy
+- [ ] Cloud Functions: transición automática a `jugada` (server-side), recalcular valoraciones, notificaciones push
+- [ ] `firebase.json` + `.firebaserc` + Firebase Hosting deploy
 
 ---
 

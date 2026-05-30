@@ -63,6 +63,7 @@ export interface Partida {
   fotosCount: number;
   votosCount: number;
   comentariosCount: number;
+  invitacionToken?: string;
   fechaCreacion: Timestamp;
   fechaActualizacion: Timestamp;
 }
@@ -85,6 +86,17 @@ export interface Ruta {
   jugadores: string[];
   estado: "borrador" | "confirmada" | "archivada";
   imagenUrl?: string;
+}
+
+export interface PeticionGestor {
+  id: string;
+  uid: string;
+  nick: string;
+  fotoUrl?: string;
+  estado: "pendiente" | "aprobada" | "rechazada";
+  fechaCreacion: Timestamp;
+  fechaResolucion?: Timestamp;
+  resueltoPor?: string;
 }
 
 export interface Voto {
