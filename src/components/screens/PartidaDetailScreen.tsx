@@ -38,6 +38,12 @@ const ADMIN_TRANSITIONS: Partial<Record<Partida["estado"], Partida["estado"][]>>
   confirmada: ["jugada"],
 };
 
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+function diaSemana(fecha: string) {
+  const [y, m, d] = fecha.split("-").map(Number);
+  return DIAS[new Date(y, m - 1, d).getDay()];
+}
+
 export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; partidaId: string }) {
   const { user, perfil } = useAuthStore();
   const qc = useQueryClient();
@@ -228,7 +234,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
         <div className="flex items-center gap-3 text-sm">
           <div className="flex items-center gap-2 text-slate-600">
             <CalendarDays className="w-4 h-4 text-slate-400" />
-            <span>{partida.fecha} · {partida.hora}</span>
+            <span>{partida.fecha} · {diaSemana(partida.fecha)} · {partida.hora}</span>
           </div>
           {partida.duracionMinutos > 0 && (
             <div className="flex items-center gap-2 text-slate-600">

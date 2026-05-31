@@ -11,6 +11,12 @@ import { getSala } from "@/lib/salas";
 import { getPerfil } from "@/lib/usuarios";
 import type { Usuario } from "@/types";
 
+const DIAS = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+function diaSemana(fecha: string) {
+  const [y, m, d] = fecha.split("-").map(Number);
+  return DIAS[new Date(y, m - 1, d).getDay()];
+}
+
 export function InvitacionScreen({
   salaId,
   partidaId,
@@ -137,7 +143,7 @@ export function InvitacionScreen({
           <div className="flex flex-wrap gap-4 text-sm text-slate-600">
             <span className="flex items-center gap-1.5">
               <CalendarDays className="w-4 h-4 text-slate-400" />
-              {partida.fecha}
+              {partida.fecha} · {diaSemana(partida.fecha)}
             </span>
             <span className="flex items-center gap-1.5">
               <Clock className="w-4 h-4 text-slate-400" />
