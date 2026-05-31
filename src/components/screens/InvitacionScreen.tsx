@@ -96,6 +96,7 @@ export function InvitacionScreen({
       await reclamarJugadorPendiente(salaId, partidaId, nombre, user.uid);
       setReclamadoOk(true);
       qc.invalidateQueries({ queryKey: ["partida", salaId, partidaId] });
+      qc.invalidateQueries({ queryKey: ["jugadores-inv-perfiles", partidaId] });
     } catch {
       setError("No se pudo completar la acción. Inténtalo de nuevo.");
     } finally {
@@ -108,7 +109,18 @@ export function InvitacionScreen({
       <div className="max-w-lg mx-auto px-4 py-8 space-y-4">
 
         {/* Cabecera */}
-        <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {sala?.imagenUrl && (
+            <div className="relative w-full h-44">
+              <Image
+                src={sala.imagenUrl}
+                alt={sala.nombreSala}
+                fill
+                className="object-cover"
+              />
+            </div>
+          )}
+          <div className="p-5 space-y-3">
           <div className="flex items-center gap-2 text-xs text-slate-400 font-medium uppercase tracking-wide">
             <Building2 className="w-3.5 h-3.5" />
             Invitación a partida de escape room
@@ -144,6 +156,7 @@ export function InvitacionScreen({
               <span className="font-medium text-[#334155]">{creadorPerfil.nick}</span>
             </p>
           )}
+          </div>
         </div>
 
         {/* Sin sesión: prompt para login/registro */}

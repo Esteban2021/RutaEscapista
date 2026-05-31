@@ -5,11 +5,12 @@ import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowLeft, CalendarDays, Clock, Users, StickyNote,
-  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil, Share2, Check,
+  ArrowLeft, Building2, CalendarDays, Clock, Users, StickyNote,
+  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil, Share2, Check, X,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { getPartida, joinPartida, leavePartida, updateEstadoPartida } from "@/lib/partidas";
+import { getSala } from "@/lib/salas";
 import { getPerfil } from "@/lib/usuarios";
 import type { Partida, Usuario } from "@/types";
 
@@ -49,6 +50,11 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
   const { data: partida, isLoading } = useQuery({
     queryKey: ["partida", salaId, partidaId],
     queryFn: () => getPartida(salaId, partidaId),
+  });
+
+  const { data: sala } = useQuery({
+    queryKey: ["sala", salaId],
+    queryFn: () => getSala(salaId),
   });
 
   const { data: perfilesConfirmados, isLoading: loadingPerfiles } = useQuery<Usuario[]>({
@@ -118,7 +124,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
     const url = `${window.location.origin}/invitacion/${salaId}/${partidaId}/${partida.invitacionToken}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
+      setTimeout(() => setCopiedLink(false), 5000);
     });
   }
 
@@ -182,11 +188,26 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
       </Link>
 
       {/* Header */}
-      <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+        {sala?.imagenUrl && (
+          <div className="relative w-full h-44">
+            <Image src={sala.imagenUrl} alt={sala.nombreSala} fill className="object-cover" />
+            {canManage && partida.invitacionToken && partida.estado !== "cancelada" && (
+              <button
+                onClick={handleCopyLink}
+                className="absolute top-3 right-3 flex items-center gap-2 bg-white/75 hover:bg-white/70 text-[#0D9488] text-md font-medium px-3 py-1.5 rounded-xl backdrop-blur-sm transition-colors"
+              >
+                {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                {copiedLink ? "Enlace copiado" : "Comparte la partida"}
+              </button>
+            )}
+          </div>
+        )}
+        <div className="p-5 space-y-4">
         <div className="flex items-start justify-between gap-2">
-          <h1 className="text-xl font-bold text-[#334155] flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-[#0D9488]" />
-            Partida
+          <h1 className="text-xl font-bold text-[#334155] flex items-center gap-2 min-w-0">
+            <Building2 className="w-4 h-4 text-[#0D9488] shrink-0" />
+            <span className="truncate">Partida{sala?.nombreSala ? ` - ${sala.nombreSala}` : ""}</span>
           </h1>
           <div className="flex items-center gap-2">
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${ESTADO_COLORS[partida.estado]}`}>
@@ -201,21 +222,10 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
                   {copiedLink ? <Check className="w-4 h-4 text-teal-600" /> : <Share2 className="w-4 h-4" />}
                 </button>
               )}
-            {canManage &&
-              (isCreador || perfil.rol !== "gestor") &&
-              partida.estado !== "cancelada" &&
-              partida.estado !== "jugada" && (
-                <Link
-                  href={`/sala/${salaId}/partida/${partidaId}/editar`}
-                  className="p-1.5 rounded-lg hover:bg-slate-50 text-slate-400 hover:text-[#0D9488] transition-colors"
-                >
-                  <Pencil className="w-4 h-4" />
-                </Link>
-              )}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="flex items-center gap-3 text-sm">
           <div className="flex items-center gap-2 text-slate-600">
             <CalendarDays className="w-4 h-4 text-slate-400" />
             <span>{partida.fecha} · {partida.hora}</span>
@@ -226,6 +236,18 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
               <span>{partida.duracionMinutos} min</span>
             </div>
           )}
+          {canManage &&
+            (isCreador || perfil.rol !== "gestor") &&
+            partida.estado !== "cancelada" &&
+            partida.estado !== "jugada" && (
+              <Link
+                href={`/sala/${salaId}/partida/${partidaId}/editar`}
+                className="ml-auto flex items-center gap-1.5 text-xs text-slate-400 hover:text-[#0D9488] transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Editar
+              </Link>
+            )}
         </div>
 
         {partida.notas && (
@@ -234,6 +256,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
             <p>{partida.notas}</p>
           </div>
         )}
+        </div>
       </div>
 
       {/* Jugadores */}
@@ -429,6 +452,24 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
           para unirte a esta partida
         </div>
       )}
+
+      {/* Toast: enlace copiado */}
+      <div
+        className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${
+          copiedLink ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"
+        }`}
+      >
+        <div className="bg-[#334155] text-white text-sm rounded-xl shadow-lg px-5 py-3 flex items-start gap-3 max-w-xs">
+          <Check className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-medium">Enlace copiado</p>
+            <p className="text-slate-300 text-xs mt-0.5">Compártelo en tu grupo de WhatsApp o envíalo por correo</p>
+          </div>
+          <button onClick={() => setCopiedLink(false)} className="text-slate-400 hover:text-white transition-colors shrink-0 mt-0.5">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

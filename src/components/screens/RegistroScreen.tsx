@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { UserPlus } from "lucide-react";
 
 const AUTH_ERROR: Record<string, string> = {
@@ -19,6 +19,8 @@ const inputCls =
 
 export default function RegistroScreen() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -41,9 +43,10 @@ export default function RegistroScreen() {
     setLoading(true);
     try {
       await createUserWithEmailAndPassword(auth, email, password);
-      // onAuthStateChanged en useAuth crea el perfil automáticamente.
-      // (main)/layout.tsx redirige a /perfil/editar porque nick estará vacío.
-      router.push("/dashboard");
+      const destino = redirect
+        ? `/perfil/editar?redirect=${encodeURIComponent(redirect)}`
+        : "/perfil/editar";
+      router.push(destino);
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? "";
       setError(AUTH_ERROR[code] ?? "Error al crear la cuenta. Inténtalo de nuevo.");

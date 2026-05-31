@@ -3,7 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Image from "next/image";
 import { UserCircle } from "lucide-react";
@@ -32,6 +32,8 @@ const inputCls =
 
 export function PerfilEditarScreen() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = searchParams.get("redirect");
   const { user, perfil, setPerfil } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
   const isOnboarding = !perfil?.nick;
@@ -73,7 +75,7 @@ export function PerfilEditarScreen() {
       };
       await updatePerfil(user.uid, updates);
       setPerfil({ ...perfil, ...updates });
-      router.push("/perfil");
+      router.push(isOnboarding && redirect ? redirect : "/perfil");
     } catch {
       setError("Error al guardar. Inténtalo de nuevo.");
     }

@@ -64,17 +64,32 @@ function PartidaCard({ partida, sala }: { partida: Partida; sala: Sala | null })
 }
 
 function PartidaCardSkeleton() {
-  return <div className="bg-white rounded-xl shadow-sm h-24 animate-pulse" />;
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-4 space-y-3 animate-pulse">
+      <div className="flex items-start justify-between gap-2">
+        <div className="h-4 bg-slate-200 rounded w-1/2" />
+        <div className="h-5 bg-slate-200 rounded-full w-20 shrink-0" />
+      </div>
+      <div className="h-3 bg-slate-200 rounded w-1/3" />
+      <div className="flex gap-4">
+        <div className="h-3 bg-slate-200 rounded w-24" />
+        <div className="h-3 bg-slate-200 rounded w-16" />
+        <div className="h-3 bg-slate-200 rounded w-10" />
+      </div>
+    </div>
+  );
 }
 
 export function MisPartidasScreen() {
-  const { user } = useAuthStore();
+  const { user, loading: authLoading } = useAuthStore();
 
-  const { data: partidas = [], isLoading } = useQuery({
+  const { data: partidas = [], isLoading: queryLoading } = useQuery({
     queryKey: ["mis-partidas", user?.uid],
     queryFn: () => getMisPartidas(user!.uid),
     enabled: !!user,
   });
+
+  const isLoading = authLoading || queryLoading;
 
   const salaIds = Array.from(new Set(partidas.map((p) => p.salaId)));
 
@@ -100,8 +115,21 @@ export function MisPartidasScreen() {
   if (isLoading) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
-        <div className="h-8 w-48 bg-white rounded-xl animate-pulse" />
-        {[...Array(3)].map((_, i) => <PartidaCardSkeleton key={i} />)}
+        <div className="flex items-center gap-3">
+          <div className="h-7 bg-slate-200 rounded-lg w-40 animate-pulse" />
+          <svg
+            className="w-5 h-5 text-[#0D9488] animate-spin shrink-0"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+          </svg>
+        </div>
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => <PartidaCardSkeleton key={i} />)}
+        </div>
       </div>
     );
   }
