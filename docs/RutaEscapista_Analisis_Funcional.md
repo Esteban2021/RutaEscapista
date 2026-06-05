@@ -67,12 +67,16 @@ Todos los roles superiores incluyen los permisos de los inferiores.
 | Crear partidas | ❌ | ✅ | ✅ | ✅ |
 | Editar partida en borrador | ✅ (si es creador) | ✅ | ✅ | ✅ |
 | Editar partida confirmada | ❌ | ✅ (limitado) | ✅ | ✅ |
-| Borrar partida | Solo si creador | Solo si creador | ✅ | ✅ |
+| Borrar partida cancelada | ❌ | ❌ | ❌ | ✅ |
+| Borrar partida (otras) | Solo si creador | Solo si creador | ✅ | ✅ |
 | Crear salas | ❌ | ❌ | ✅ | ✅ |
 | Editar salas | ❌ | ❌ | ✅ | ✅ |
 | Archivar salas | ❌ | ❌ | ✅ | ✅ |
 | Borrar salas definitivamente | ❌ | ❌ | ❌ | ✅ |
 | Aprobar solicitudes de Gestor | ❌ | ❌ | ✅ | ✅ |
+| Ver panel de usuarios | ❌ | ❌ | ✅ (solo lectura) | ✅ |
+| Cambiar rol de usuario | ❌ | ❌ | ❌ | ✅ |
+| Bloquear / desbloquear usuario | ❌ | ❌ | ❌ | ✅ |
 | Borrar fotos ajenas | ❌ | ❌ (solo las suyas) | ✅ | ✅ |
 | Borrar fotos ajenas (creador partida) | — | ✅ en su partida | ✅ | ✅ |
 
@@ -410,6 +414,27 @@ Las URLs de Storage son **públicas** (sin autenticación requerida para verlas)
 3. Un admin o superadmin la aprueba.
 4. El usuario pasa a tener `gestorPartidas: true` en su documento de Firestore.
 
+### Panel de gestión de usuarios (`/admin/usuarios`)
+
+Accesible para Admin y Superadmin. Muestra el listado completo de usuarios registrados con búsqueda por nick o email.
+
+| Acción | Admin | Superadmin |
+|---|---|---|
+| Ver listado completo | ✅ | ✅ |
+| Buscar por nick / email | ✅ | ✅ |
+| Cambiar rol de un usuario | ❌ | ✅ |
+| Bloquear / desbloquear usuario | ❌ | ✅ |
+
+#### Bloqueo de usuarios
+
+El superadmin puede marcar un usuario como bloqueado (`bloqueado: true` en Firestore). El efecto es inmediato en el próximo intento de autenticación: el hook `useAuth` comprueba el campo al cargar el perfil y cierra la sesión automáticamente si está bloqueado. El bloqueo es reversible.
+
+No se elimina la cuenta de Firebase Authentication (requeriría Cloud Functions). El bloqueo actúa exclusivamente a nivel de aplicación.
+
+#### Cambio de rol
+
+El superadmin puede asignar cualquier rol (`usuario`, `gestor`, `admin`, `superadmin`) a cualquier usuario salvo a sí mismo. Los cambios surten efecto en la siguiente carga de sesión del usuario afectado.
+
 ### Perfil del usuario
 
 | Campo | Obligatorio | Visible |
@@ -568,7 +593,7 @@ Una sala puede descargarse para uso sin conexión. Formato pendiente de decisió
 /admin/gestores                → Solicitudes de ascenso a Gestor
 /admin/reportes                → Reportes de fotos
 /admin/salas-cerradas          → Salas cerradas/archivadas
-/admin/usuarios                → Gestión de usuarios (Superadmin)
+/admin/usuarios                → Gestión de usuarios (Admin: solo lectura; Superadmin: rol + bloqueo)
 ```
 
 ### Configuración de Vue Router
@@ -826,6 +851,7 @@ allow write: if request.auth != null;
 - [ ] Módulo de comentarios (spoilers, edición)
 - [ ] Perfil de usuario + solicitud de ascenso a Gestor
 - [ ] Panel de administración (solicitudes, reportes, salas)
+- [x] `/admin/usuarios` — listado con búsqueda, cambio de rol y bloqueo (superadmin)
 - [ ] FAQ
 - [ ] Exportación offline de sala
 

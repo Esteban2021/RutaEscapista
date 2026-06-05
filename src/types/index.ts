@@ -5,7 +5,9 @@ export type Rol = "usuario" | "gestor" | "admin" | "superadmin";
 export interface Usuario {
   uid: string;
   nick: string;
+  nickNormalizado?: string;
   nombre?: string;
+  email?: string;
   fotoUrl?: string;
   fotoOriginalUrl?: string;
   rol: Rol;
@@ -13,6 +15,7 @@ export interface Usuario {
   provincia?: string;
   fechaCreacion: Timestamp;
   salasJugadas: number;
+  bloqueado?: boolean;
 }
 
 export interface Sala {
@@ -57,7 +60,7 @@ export interface Partida {
   estado: "borrador" | "confirmada" | "jugada" | "cancelada";
   creadorId: string;
   jugadoresConfirmados: string[];
-  jugadoresPendientes: Array<string | { nombre: string }>;
+  jugadoresPendientes: Array<{ nombre: string; uid?: string }>;
   plazasMax: number;
   notas?: string;
   fotosCount: number;

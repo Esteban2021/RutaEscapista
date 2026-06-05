@@ -1,6 +1,6 @@
 import {
   collection, collectionGroup, doc, getDoc, addDoc,
-  updateDoc, arrayUnion, arrayRemove, query, where, getDocs,
+  updateDoc, deleteDoc, arrayUnion, arrayRemove, query, where, getDocs,
   serverTimestamp, Timestamp,
 } from "firebase/firestore";
 import { db } from "./firebase";
@@ -14,6 +14,7 @@ export interface CrearPartidaInput {
   notas?: string;
   jugadoresConfirmados?: string[];
   jugadoresPendientes?: string[];
+  jugadoresInvitados?: Array<{ uid: string; nick: string }>;
   estado: "borrador" | "confirmada";
   creadorId: string;
 }
@@ -38,7 +39,10 @@ export async function crearPartida(input: CrearPartidaInput): Promise<string> {
     estado: input.estado,
     creadorId: input.creadorId,
     jugadoresConfirmados: input.jugadoresConfirmados ?? [input.creadorId],
-    jugadoresPendientes: (input.jugadoresPendientes ?? []).map((n) => ({ nombre: n })),
+    jugadoresPendientes: [
+      ...(input.jugadoresPendientes ?? []).map((n) => ({ nombre: n })),
+      ...(input.jugadoresInvitados ?? []).map((u) => ({ nombre: u.nick, uid: u.uid })),
+    ],
     plazasMax: input.plazasMax,
     notas: input.notas ?? "",
     fotosCount: 0,
@@ -115,6 +119,7 @@ export async function updatePartida(
   partidaId: string,
   data: {
     jugadoresConfirmados: string[];
+    jugadoresInvitados: Array<{ uid: string; nick: string }>;
     jugadoresPendientes: string[];
     plazasMax: number;
     notas: string;
@@ -122,9 +127,31 @@ export async function updatePartida(
 ): Promise<void> {
   await updateDoc(doc(db, "salas", salaId, "partidas", partidaId), {
     jugadoresConfirmados: data.jugadoresConfirmados,
-    jugadoresPendientes: data.jugadoresPendientes.map((n) => ({ nombre: n })),
+    jugadoresPendientes: [
+      ...data.jugadoresPendientes.map((n) => ({ nombre: n })),
+      ...data.jugadoresInvitados.map((u) => ({ nombre: u.nick, uid: u.uid })),
+    ],
     plazasMax: data.plazasMax,
     notas: data.notas,
+    fechaActualizacion: serverTimestamp(),
+  });
+}
+
+export async function confirmarJugadorPorUid(
+  salaId: string,
+  partidaId: string,
+  uid: string,
+): Promise<void> {
+  const ref = doc(db, "salas", salaId, "partidas", partidaId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("Partida no encontrada");
+
+  const pendientes = (snap.data().jugadoresPendientes ?? []) as Array<{ nombre: string; uid?: string }>;
+  const nuevoPendientes = pendientes.filter((j) => j.uid !== uid);
+
+  await updateDoc(ref, {
+    jugadoresPendientes: nuevoPendientes,
+    jugadoresConfirmados: arrayUnion(uid),
     fechaActualizacion: serverTimestamp(),
   });
 }
@@ -138,4 +165,8 @@ export async function updateEstadoPartida(
     estado,
     fechaActualizacion: serverTimestamp(),
   });
+}
+
+export async function deletePartida(salaId: string, partidaId: string): Promise<void> {
+  await deleteDoc(doc(db, "salas", salaId, "partidas", partidaId));
 }

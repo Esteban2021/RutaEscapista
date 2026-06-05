@@ -68,6 +68,8 @@ Los roles superiores incluyen todos los permisos de los inferiores.
 **Campo en Firestore**: `usuarios/{uid}.rol` — string simple (`'usuario' | 'gestor' | 'admin' | 'superadmin'`).
 Las reglas usan `get(...).data.rol in ['admin','superadmin']`.
 
+**Bloqueo**: `usuarios/{uid}.bloqueado` — boolean opcional. Si `true`, `useAuth` cierra la sesión al cargar el perfil. Solo el superadmin puede escribir este campo (regla Firestore).
+
 Ver tabla completa de permisos en [`docs/`](docs/RutaEscapista_Analisis_Funcional.md#2-roles-y-permisos) §2.
 
 ---
@@ -119,6 +121,7 @@ getFirestore("punt0defuga")
 /admin                         → Panel administración
 /admin/gestores                → Solicitudes ascenso a Gestor
 /admin/reportes                → Reportes de fotos
+/admin/usuarios                → Gestión de usuarios (Admin: solo lectura; Superadmin: rol + bloqueo)
 ```
 
 Rutas públicas (sin auth): `/`, `/salas`, `/sala/[salaId]`, `/rutas`, `/ruta/[rutaId]`, `/invitacion/...`
@@ -253,9 +256,11 @@ El original se guarda en `fotoOriginalUrl`; el redimensionado en `fotoUrl`.
 - Crear / editar ruta
 
 **Admin + FAQ**
-- Panel `/admin` con estadísticas globales
+- Panel `/admin` con estadísticas globales (conteo en tiempo real, sin dependencia de `estadisticas/general`)
 - `/admin/gestores` — aprobar/rechazar solicitudes de Gestor (`writeBatch`: peticion + rol de usuario)
 - `/admin/reportes` — placeholder
+- `/admin/usuarios` — listado de usuarios con búsqueda por nick/email; Admin: solo lectura; Superadmin: cambiar rol y bloquear/desbloquear
+- Bloqueo de usuarios: campo `bloqueado: true` en Firestore; `useAuth` cierra sesión automáticamente si el perfil está bloqueado
 - Página `/faq` pública con acordeón
 
 ### ❌ Pendiente

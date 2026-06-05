@@ -1,9 +1,9 @@
 import {
-  collection, doc, addDoc, updateDoc, getDoc, getDocs,
+  collection, collectionGroup, doc, addDoc, updateDoc, getDoc, getDocs,
   query, where, orderBy, serverTimestamp, writeBatch,
 } from "firebase/firestore";
 import { db } from "./firebase";
-import type { PeticionGestor } from "@/types";
+import type { PeticionGestor, Rol, Usuario } from "@/types";
 
 export async function crearPeticionGestor(uid: string, nick: string, fotoUrl?: string): Promise<void> {
   await addDoc(collection(db, "peticionesGestor"), {
@@ -59,19 +59,38 @@ export async function rechazarPeticion(petId: string, adminUid: string): Promise
   });
 }
 
+export async function getUsuarios(): Promise<Usuario[]> {
+  const snap = await getDocs(collection(db, "usuarios"));
+  return snap.docs
+    .filter((d) => d.id !== "_schema")
+    .map((d) => ({ uid: d.id, ...d.data() } as Usuario))
+    .sort((a, b) => (a.nick ?? "").localeCompare(b.nick ?? "", "es"));
+}
+
+export async function updateUserRol(uid: string, rol: Rol): Promise<void> {
+  await updateDoc(doc(db, "usuarios", uid), { rol });
+}
+
+export async function toggleUserBloqueo(uid: string, bloqueado: boolean): Promise<void> {
+  await updateDoc(doc(db, "usuarios", uid), { bloqueado });
+}
+
 export async function getStats(): Promise<{
   totalUsuarios: number;
   totalSalas: number;
   totalPartidas: number;
   totalRutas: number;
 }> {
-  const snap = await getDoc(doc(db, "estadisticas", "general"));
-  if (!snap.exists()) return { totalUsuarios: 0, totalSalas: 0, totalPartidas: 0, totalRutas: 0 };
-  const d = snap.data();
+  const [usuariosSnap, salasSnap, rutasSnap, partidasSnap] = await Promise.all([
+    getDocs(collection(db, "usuarios")),
+    getDocs(collection(db, "salas")),
+    getDocs(collection(db, "rutas")),
+    getDocs(collectionGroup(db, "partidas")),
+  ]);
   return {
-    totalUsuarios: d.totalUsuarios ?? 0,
-    totalSalas: d.totalSalas ?? 0,
-    totalPartidas: d.totalPartidas ?? 0,
-    totalRutas: d.totalRutas ?? 0,
+    totalUsuarios: usuariosSnap.docs.filter((d) => d.id !== "_schema").length,
+    totalSalas: salasSnap.docs.filter((d) => d.id !== "_schema").length,
+    totalPartidas: partidasSnap.docs.filter((d) => d.id !== "_schema").length,
+    totalRutas: rutasSnap.docs.filter((d) => d.id !== "_schema").length,
   };
 }

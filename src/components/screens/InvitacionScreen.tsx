@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, Clock, Users, UserCircle, Check, HelpCircle, Building2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { getPartida, reclamarJugadorPendiente } from "@/lib/partidas";
+import { getPartida, reclamarJugadorPendiente, confirmarJugadorPorUid } from "@/lib/partidas";
 import { getSala } from "@/lib/salas";
 import { getPerfil } from "@/lib/usuarios";
 import type { Usuario } from "@/types";
@@ -26,10 +26,11 @@ export function InvitacionScreen({
   partidaId: string;
   token: string;
 }) {
-  const { user, perfil } = useAuthStore();
+  const { user } = useAuthStore();
   const qc = useQueryClient();
   const [reclamando, setReclamando] = useState<string | null>(null);
   const [reclamadoOk, setReclamadoOk] = useState(false);
+  const [confirmadoOk, setConfirmadoOk] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const { data: partida, isLoading: loadingPartida } = useQuery({
@@ -90,9 +91,13 @@ export function InvitacionScreen({
     );
   }
 
-  const jugadoresPendientes = (partida.jugadoresPendientes ?? []) as Array<{ nombre: string }>;
+  const todosPendientes = (partida.jugadoresPendientes ?? []) as Array<{ nombre: string; uid?: string }>;
+  const pendientesRegistrados = todosPendientes.filter((j) => j.uid);
+  const pendientesNoRegistrados = todosPendientes.filter((j) => !j.uid);
+
   const yaConfirmado = user ? partida.jugadoresConfirmados.includes(user.uid) : false;
-  const yaReclamado = reclamadoOk || yaConfirmado;
+  const tieneInvitacionPendiente = user ? pendientesRegistrados.some((j) => j.uid === user.uid) : false;
+  const yaResuelto = reclamadoOk || confirmadoOk || yaConfirmado;
 
   async function handleReclamar(nombre: string) {
     if (!user) return;
@@ -105,6 +110,22 @@ export function InvitacionScreen({
       qc.invalidateQueries({ queryKey: ["jugadores-inv-perfiles", partidaId] });
     } catch {
       setError("No se pudo completar la acción. Inténtalo de nuevo.");
+    } finally {
+      setReclamando(null);
+    }
+  }
+
+  async function handleConfirmar() {
+    if (!user) return;
+    setReclamando("__confirmar__");
+    setError(null);
+    try {
+      await confirmarJugadorPorUid(salaId, partidaId, user.uid);
+      setConfirmadoOk(true);
+      qc.invalidateQueries({ queryKey: ["partida", salaId, partidaId] });
+      qc.invalidateQueries({ queryKey: ["jugadores-inv-perfiles", partidaId] });
+    } catch {
+      setError("No se pudo confirmar la asistencia. Inténtalo de nuevo.");
     } finally {
       setReclamando(null);
     }
@@ -225,17 +246,48 @@ export function InvitacionScreen({
               </div>
             )}
 
-            {/* Pendientes */}
-            {jugadoresPendientes.length > 0 && (
+            {/* Invitados registrados pendientes */}
+            {pendientesRegistrados.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Invitados pendientes</p>
+                {pendientesRegistrados.map((j) => {
+                  const esMio = j.uid === user.uid;
+                  return (
+                    <div key={j.uid} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                        <UserCircle className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <span className="text-sm text-[#334155] flex-1 min-w-0 truncate">{j.nombre}</span>
+                      {esMio && !yaResuelto ? (
+                        <button
+                          onClick={handleConfirmar}
+                          disabled={!!reclamando}
+                          className="text-xs bg-[#0D9488] text-white px-3 py-1.5 rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 shrink-0"
+                        >
+                          {reclamando === "__confirmar__" ? "…" : "Confirmar asistencia"}
+                        </button>
+                      ) : (
+                        <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full shrink-0">
+                          Pendiente
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Pendientes sin cuenta */}
+            {pendientesNoRegistrados.length > 0 && (
               <div className="space-y-2">
                 <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Pendientes de confirmar</p>
-                {jugadoresPendientes.map((j, i) => (
+                {pendientesNoRegistrados.map((j, i) => (
                   <div key={i} className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
                       <UserCircle className="w-5 h-5 text-slate-400" />
                     </div>
                     <span className="text-sm text-[#334155] flex-1">{j.nombre}</span>
-                    {!yaReclamado && (
+                    {!yaResuelto && (
                       <button
                         onClick={() => handleReclamar(j.nombre)}
                         disabled={!!reclamando}
@@ -244,18 +296,13 @@ export function InvitacionScreen({
                         {reclamando === j.nombre ? "…" : "Yo soy esta persona"}
                       </button>
                     )}
-                    {yaReclamado && reclamadoOk && reclamando === null && (
-                      <span className="text-xs bg-teal-50 text-teal-700 px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1">
-                        <Check className="w-3 h-3" /> Confirmado
-                      </span>
-                    )}
                   </div>
                 ))}
               </div>
             )}
 
-            {/* No estoy en la lista */}
-            {!yaReclamado && jugadoresPendientes.length > 0 && (
+            {/* No aparece en ninguna lista */}
+            {!yaResuelto && !tieneInvitacionPendiente && pendientesNoRegistrados.length > 0 && (
               <div className="flex items-start gap-2 bg-slate-50 rounded-xl px-3 py-3">
                 <HelpCircle className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
                 <p className="text-xs text-slate-500">
@@ -264,15 +311,15 @@ export function InvitacionScreen({
               </div>
             )}
 
-            {/* Sin pendientes y no confirmado: invitar a unirse */}
-            {!yaConfirmado && !reclamadoOk && jugadoresPendientes.length === 0 && partida.estado === "confirmada" && (
+            {/* Sin pendientes y no confirmado */}
+            {!yaConfirmado && !confirmadoOk && !reclamadoOk && pendientesNoRegistrados.length === 0 && !tieneInvitacionPendiente && partida.estado === "confirmada" && (
               <p className="text-xs text-slate-400 text-center">
                 El organizador tiene que añadirte a la partida para que aparezcas aquí.
               </p>
             )}
 
             {/* Feedback éxito */}
-            {reclamadoOk && (
+            {(reclamadoOk || confirmadoOk) && (
               <div className="flex items-center gap-2 bg-teal-50 text-teal-700 rounded-xl px-4 py-3 text-sm">
                 <Check className="w-4 h-4 shrink-0" />
                 ¡Ya estás confirmado en la partida!

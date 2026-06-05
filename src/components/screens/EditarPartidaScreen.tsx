@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -26,6 +26,11 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
+type JugadorConCuenta = {
+  usuario: Usuario;
+  confirmado: boolean;
+};
+
 const inputCls =
   "w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500";
 
@@ -34,22 +39,23 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
   const qc = useQueryClient();
   const { user, perfil } = useAuthStore();
 
-  // Jugadores registrados
-  const [jugadoresRegistrados, setJugadoresRegistrados] = useState<Usuario[]>([]);
+  const [jugadoresConCuenta, setJugadoresConCuenta] = useState<JugadorConCuenta[]>([]);
+  const [jugadoresPendientes, setJugadoresPendientes] = useState<string[]>([]);
   const [busquedaNick, setBusquedaNick] = useState("");
   const [resultadosBusqueda, setResultadosBusqueda] = useState<Usuario[]>([]);
   const [buscando, setBuscando] = useState(false);
   const busquedaRef = useRef<HTMLDivElement>(null);
 
-  // Jugadores sin cuenta
-  const [jugadoresPendientes, setJugadoresPendientes] = useState<string[]>([]);
   const [nuevoJugador, setNuevoJugador] = useState("");
   const [pendingWarning, setPendingWarning] = useState(false);
 
   const [initialized, setInitialized] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showMismatchDialog, setShowMismatchDialog] = useState(false);
+  const [saveData, setSaveData] = useState<FormValues | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<FormValues>({
+  const { register, handleSubmit, reset, setValue, formState: { errors, isSubmitting } } = useForm<FormValues>({
     resolver: zodResolver(schema),
   });
 
@@ -58,34 +64,55 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
     queryFn: () => getPartida(salaId, partidaId),
   });
 
-  const { data: perfilesIniciales, isLoading: loadingPerfiles } = useQuery<Usuario[]>({
-    queryKey: ["jugadores-editar-perfiles", salaId, partidaId],
+  const { data: perfilesConfirmados, isLoading: loadingConfirmados } = useQuery<Usuario[]>({
+    queryKey: ["jugadores-editar-confirmados", salaId, partidaId],
     queryFn: async () => {
       const profiles = await Promise.all(
         (partida?.jugadoresConfirmados ?? []).map((uid) => getPerfil(uid)),
       );
       return profiles.filter(Boolean) as Usuario[];
     },
-    enabled: !!partida && partida.jugadoresConfirmados.length > 0,
+    enabled: !!partida,
   });
 
-  // Inicializar estado del formulario una sola vez
+  const pendientesConUid = useMemo(() => {
+    if (!partida) return [];
+    return (partida.jugadoresPendientes as Array<{ nombre: string; uid?: string }>)
+      .filter((j) => j?.uid);
+  }, [partida]);
+
+  const { data: perfilesInvitados, isLoading: loadingInvitados } = useQuery<Usuario[]>({
+    queryKey: ["jugadores-editar-invitados", salaId, partidaId],
+    queryFn: async () => {
+      const profiles = await Promise.all(
+        pendientesConUid.map((j) => getPerfil(j.uid!)),
+      );
+      return profiles.filter(Boolean) as Usuario[];
+    },
+    enabled: !!partida && pendientesConUid.length > 0,
+  });
+
   useEffect(() => {
     if (!partida || initialized) return;
-    const perfilesListos = partida.jugadoresConfirmados.length === 0 || perfilesIniciales;
-    if (!perfilesListos) return;
+    const confirmadosListos = partida.jugadoresConfirmados.length === 0 || perfilesConfirmados !== undefined;
+    const invitadosListos = pendientesConUid.length === 0 || perfilesInvitados !== undefined;
+    if (!confirmadosListos || !invitadosListos) return;
 
     reset({
       plazasMax: String(partida.plazasMax),
       notas: partida.notas ?? "",
     });
-    setJugadoresRegistrados(perfilesIniciales ?? []);
-    const pendientes = (partida.jugadoresPendientes as Array<{ nombre: string }>)
-      .filter((j) => j?.nombre)
+
+    const confirmados: JugadorConCuenta[] = (perfilesConfirmados ?? []).map((u) => ({ usuario: u, confirmado: true }));
+    const invitados: JugadorConCuenta[] = (perfilesInvitados ?? []).map((u) => ({ usuario: u, confirmado: false }));
+    setJugadoresConCuenta([...confirmados, ...invitados]);
+
+    const pendientes = (partida.jugadoresPendientes as Array<{ nombre: string; uid?: string }>)
+      .filter((j) => j?.nombre && !j.uid)
       .map((j) => j.nombre);
     setJugadoresPendientes(pendientes);
     setInitialized(true);
-  }, [partida, perfilesIniciales, initialized, reset]);
+  }, [partida, perfilesConfirmados, perfilesInvitados, pendientesConUid.length, initialized, reset]);
 
   // Búsqueda con debounce
   useEffect(() => {
@@ -98,7 +125,7 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
       try {
         const results = await buscarUsuariosPorNick(busquedaNick.trim());
         const filtrados = results.filter(
-          (u) => !jugadoresRegistrados.some((j) => j.uid === u.uid),
+          (u) => !jugadoresConCuenta.some((j) => j.usuario.uid === u.uid),
         );
         setResultadosBusqueda(filtrados);
       } finally {
@@ -106,7 +133,7 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
       }
     }, 350);
     return () => clearTimeout(timer);
-  }, [busquedaNick, jugadoresRegistrados]);
+  }, [busquedaNick, jugadoresConCuenta]);
 
   // Cerrar dropdown al hacer clic fuera
   useEffect(() => {
@@ -120,7 +147,14 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (loadingPartida || loadingPerfiles || !initialized) {
+  // Auto-actualizar plazasMax al añadir o quitar jugadores
+  useEffect(() => {
+    if (!initialized) return;
+    const total = jugadoresConCuenta.length + jugadoresPendientes.length;
+    if (total >= 1) setValue("plazasMax", String(total));
+  }, [jugadoresConCuenta.length, jugadoresPendientes.length, initialized, setValue]);
+
+  if (loadingPartida || loadingConfirmados || (pendientesConUid.length > 0 && loadingInvitados) || !initialized) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         <div className="h-10 w-32 bg-white rounded-xl animate-pulse" />
@@ -164,13 +198,13 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
   }
 
   function addRegistrado(u: Usuario) {
-    setJugadoresRegistrados((prev) => [...prev, u]);
+    setJugadoresConCuenta((prev) => [...prev, { usuario: u, confirmado: false }]);
     setResultadosBusqueda([]);
     setBusquedaNick("");
   }
 
-  function removeRegistrado(uid: string) {
-    setJugadoresRegistrados((prev) => prev.filter((u) => u.uid !== uid));
+  function removeConCuenta(uid: string) {
+    setJugadoresConCuenta((prev) => prev.filter((j) => j.usuario.uid !== uid));
   }
 
   function addJugador() {
@@ -185,11 +219,15 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
     setJugadoresPendientes((prev) => prev.filter((j) => j !== nombre));
   }
 
-  async function onSubmit(data: FormValues) {
+  async function doSave(data: FormValues) {
+    setSaving(true);
     setSubmitError(null);
     try {
       await updatePartida(salaId, partidaId, {
-        jugadoresConfirmados: jugadoresRegistrados.map((u) => u.uid),
+        jugadoresConfirmados: jugadoresConCuenta.filter((j) => j.confirmado).map((j) => j.usuario.uid),
+        jugadoresInvitados: jugadoresConCuenta
+          .filter((j) => !j.confirmado)
+          .map((j) => ({ uid: j.usuario.uid, nick: j.usuario.nick })),
         jugadoresPendientes,
         plazasMax: parseInt(data.plazasMax, 10),
         notas: data.notas ?? "",
@@ -198,11 +236,26 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
       router.push(`/sala/${salaId}/partida/${partidaId}`);
     } catch {
       setSubmitError("Error al guardar. Inténtalo de nuevo.");
+    } finally {
+      setSaving(false);
     }
+  }
+
+  async function onSubmit(data: FormValues) {
+    const plazas = parseInt(data.plazasMax, 10);
+    const totalJugadores = jugadoresConCuenta.length + jugadoresPendientes.length;
+    if (totalJugadores > 0 && plazas !== totalJugadores) {
+      setSaveData(data);
+      setShowMismatchDialog(true);
+      return;
+    }
+    await doSave(data);
   }
 
   const sinResultados =
     busquedaNick.trim().length >= 2 && !buscando && resultadosBusqueda.length === 0;
+
+  const hayInvitadosPendientes = jugadoresConCuenta.some((j) => !j.confirmado);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -263,33 +316,41 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
             <div className="space-y-2">
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Con cuenta</p>
 
-              {jugadoresRegistrados.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {jugadoresRegistrados.map((u) => (
-                    <span
-                      key={u.uid}
-                      className="inline-flex items-center gap-1.5 bg-teal-50 text-teal-700 text-xs px-2.5 py-1 rounded-full"
-                    >
-                      {u.fotoUrl ? (
+              {jugadoresConCuenta.length > 0 && (
+                <div className="space-y-2">
+                  {jugadoresConCuenta.map((j) => (
+                    <div key={j.usuario.uid} className="flex items-center gap-2.5">
+                      {j.usuario.fotoUrl ? (
                         <Image
-                          src={u.fotoUrl}
-                          alt={u.nick}
-                          width={16}
-                          height={16}
-                          className="rounded-full object-cover"
+                          src={j.usuario.fotoUrl}
+                          alt={j.usuario.nick}
+                          width={28}
+                          height={28}
+                          className="rounded-full object-cover shrink-0"
                         />
                       ) : (
-                        <UserCircle className="w-3.5 h-3.5" />
+                        <div className="w-7 h-7 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                          <UserCircle className="w-4 h-4 text-teal-600" />
+                        </div>
                       )}
-                      {u.nick}
+                      <span className="text-sm text-[#334155] flex-1 min-w-0 truncate">
+                        {j.usuario.nick}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
+                        j.confirmado
+                          ? "bg-teal-50 text-teal-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}>
+                        {j.confirmado ? "Confirmado" : "Pendiente"}
+                      </span>
                       <button
                         type="button"
-                        onClick={() => removeRegistrado(u.uid)}
-                        className="hover:text-teal-900"
+                        onClick={() => removeConCuenta(j.usuario.uid)}
+                        className="text-slate-300 hover:text-red-500 transition-colors shrink-0"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
-                    </span>
+                    </div>
                   ))}
                 </div>
               )}
@@ -338,6 +399,12 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
                   </div>
                 )}
               </div>
+
+              {hayInvitadosPendientes && (
+                <p className="text-xs text-amber-600">
+                  Los jugadores pendientes deberán confirmar su asistencia.
+                </p>
+              )}
             </div>
 
             {/* Sin cuenta */}
@@ -404,6 +471,42 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
 
           {submitError && <p className="text-sm text-red-500">{submitError}</p>}
 
+          {/* Aviso de inconsistencia entre plazas y jugadores */}
+          {showMismatchDialog && saveData && (
+            <div className="border border-amber-200 rounded-xl bg-amber-50 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-700">Las plazas no coinciden</p>
+                  <p className="text-sm text-amber-600 mt-1">
+                    Hay {jugadoresConCuenta.length + jugadoresPendientes.length} jugador
+                    {jugadoresConCuenta.length + jugadoresPendientes.length !== 1 ? "es" : ""} en la lista
+                    {" "}pero las plazas están configuradas a <strong>{saveData.plazasMax}</strong>.
+                    {" "}¿Guardar igualmente?
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowMismatchDialog(false)}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-xl text-sm font-medium border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors disabled:opacity-50"
+                >
+                  Revisar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowMismatchDialog(false); doSave(saveData); }}
+                  disabled={saving}
+                  className="px-4 py-2 rounded-xl text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? "Guardando…" : "Guardar igualmente"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -414,10 +517,10 @@ export function EditarPartidaScreen({ salaId, partidaId }: { salaId: string; par
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || saving}
               className="flex-1 bg-[#0D9488] text-white py-2.5 rounded-xl font-medium hover:bg-teal-700 transition-colors disabled:opacity-50"
             >
-              {isSubmitting ? "Guardando…" : "Guardar"}
+              {isSubmitting || saving ? "Guardando…" : "Guardar"}
             </button>
           </div>
         </form>

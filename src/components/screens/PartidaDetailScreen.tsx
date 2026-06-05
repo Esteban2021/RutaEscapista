@@ -3,13 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Building2, CalendarDays, Clock, Users, StickyNote,
-  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil, Share2, Check, X,
+  UserCheck, UserMinus, AlertCircle, ChevronDown, ChevronUp, UserCircle, Pencil, Share2, Check, X, Trash2,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { getPartida, joinPartida, leavePartida, updateEstadoPartida } from "@/lib/partidas";
+import { getPartida, joinPartida, leavePartida, updateEstadoPartida, confirmarJugadorPorUid, deletePartida } from "@/lib/partidas";
 import { getSala } from "@/lib/salas";
 import { getPerfil } from "@/lib/usuarios";
 import type { Partida, Usuario } from "@/types";
@@ -33,7 +34,6 @@ const TRANSITIONS: Partial<Record<Partida["estado"], Partida["estado"][]>> = {
   confirmada: ["cancelada"],
 };
 
-// Solo admins pueden forzar manualmente el paso a "jugada" (corrección)
 const ADMIN_TRANSITIONS: Partial<Record<Partida["estado"], Partida["estado"][]>> = {
   confirmada: ["jugada"],
 };
@@ -47,9 +47,12 @@ function diaSemana(fecha: string) {
 export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; partidaId: string }) {
   const { user, perfil } = useAuthStore();
   const qc = useQueryClient();
+  const router = useRouter();
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [expandedJugadores, setExpandedJugadores] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -74,7 +77,26 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
     enabled: expandedJugadores && (partida?.jugadoresConfirmados?.length ?? 0) > 0,
   });
 
-  // Transición automática a "jugada" cuando el tiempo ha expirado
+  // Jugadores pendientes con uid (registrados invitados pero no confirmados)
+  const pendientesRegistrados = partida
+    ? (partida.jugadoresPendientes as Array<{ nombre: string; uid?: string }>).filter((j) => j?.uid)
+    : [];
+
+  const { data: perfilesPendientesRegistrados } = useQuery<Usuario[]>({
+    queryKey: ["jugadores-pendientes-perfiles", partidaId],
+    queryFn: async () => {
+      const profiles = await Promise.all(pendientesRegistrados.map((j) => getPerfil(j.uid!)));
+      return profiles.filter(Boolean) as Usuario[];
+    },
+    enabled: expandedJugadores && pendientesRegistrados.length > 0,
+  });
+
+  // Jugadores pendientes sin uid (sin cuenta)
+  const pendientesNoRegistrados = partida
+    ? (partida.jugadoresPendientes as Array<{ nombre: string; uid?: string }>).filter((j) => !j?.uid)
+    : [];
+
+  // Transición automática a "jugada"
   useEffect(() => {
     if (!partida || partida.estado !== "confirmada" || !partida.fechaHoraInicio) return;
     const duracion = partida.duracionMinutos > 0 ? partida.duracionMinutos : 90;
@@ -111,19 +133,21 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
   const isConfirmado = user ? partida.jugadoresConfirmados.includes(user.uid) : false;
   const isCreador = user?.uid === partida.creadorId;
   const canManage = perfil && ["gestor", "admin", "superadmin"].includes(perfil.rol);
+  const isAdmin = perfil && ["admin", "superadmin"].includes(perfil.rol);
   const plazasOcupadas = partida.jugadoresConfirmados.length;
   const plazasLibres = partida.plazasMax > 0 ? partida.plazasMax - plazasOcupadas : null;
+
+  const tieneInvitacionPendiente = user
+    ? pendientesRegistrados.some((j) => j.uid === user.uid)
+    : false;
+
   const puedeUnirse =
     user &&
     !isConfirmado &&
+    !tieneInvitacionPendiente &&
     partida.estado === "confirmada" &&
     (plazasLibres === null || plazasLibres > 0);
   const puedeSalir = user && isConfirmado && !isCreador && partida.estado === "confirmada";
-
-  const jugadoresPendientes = partida.jugadoresPendientes as Array<string | { nombre: string }>;
-  const pendientesNombres = jugadoresPendientes.map((j) =>
-    typeof j === "string" ? j : j.nombre,
-  );
 
   function handleCopyLink() {
     if (!partida?.invitacionToken) return;
@@ -164,6 +188,21 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
     }
   }
 
+  async function handleConfirmarPorUid(uid: string) {
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await confirmarJugadorPorUid(salaId, partidaId, uid);
+      qc.invalidateQueries({ queryKey: ["partida", salaId, partidaId] });
+      qc.invalidateQueries({ queryKey: ["partidas", salaId] });
+      qc.invalidateQueries({ queryKey: ["jugadores-pendientes-perfiles", partidaId] });
+    } catch {
+      setActionError("Error al confirmar. Inténtalo de nuevo.");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function handleEstado(nuevoEstado: Partida["estado"]) {
     setActionLoading(true);
     setActionError(null);
@@ -178,8 +217,22 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
     }
   }
 
+  const isSuperadmin = perfil?.rol === "superadmin";
+
+  async function handleDelete() {
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      await deletePartida(salaId, partidaId);
+      qc.invalidateQueries({ queryKey: ["partidas", salaId] });
+      router.push(`/sala/${salaId}`);
+    } catch {
+      setActionError("Error al eliminar la partida.");
+      setActionLoading(false);
+    }
+  }
+
   const transitions = TRANSITIONS[partida.estado] ?? [];
-  const isAdmin = perfil && ["admin", "superadmin"].includes(perfil.rol);
   const adminTransitions = isAdmin ? (ADMIN_TRANSITIONS[partida.estado] ?? []) : [];
   const allTransitions = [...transitions, ...adminTransitions];
 
@@ -279,6 +332,9 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
             <span className="text-sm text-slate-500">
               {plazasOcupadas}
               {partida.plazasMax > 0 && `/${partida.plazasMax}`} confirmados
+              {pendientesRegistrados.length > 0 && (
+                <span className="ml-1 text-amber-600">· {pendientesRegistrados.length} pendiente{pendientesRegistrados.length > 1 ? "s" : ""}</span>
+              )}
             </span>
             {expandedJugadores
               ? <ChevronUp className="w-4 h-4 text-slate-400" />
@@ -310,6 +366,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
               </div>
             ) : (
               <>
+                {/* Confirmados */}
                 {(perfilesConfirmados?.length ?? 0) > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Confirmados</p>
@@ -339,15 +396,65 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
                   </div>
                 )}
 
-                {pendientesNombres.length > 0 && (
+                {/* Pendientes con cuenta (invitados) */}
+                {pendientesRegistrados.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Invitados pendientes</p>
+                    {pendientesRegistrados.map((j) => {
+                      const perfPlayer = perfilesPendientesRegistrados?.find((p) => p.uid === j.uid);
+                      const esMio = user?.uid === j.uid;
+                      const puedeConfirmar = esMio || (canManage && (isCreador || perfil?.rol !== "gestor"));
+                      return (
+                        <div key={j.uid} className="flex items-center gap-3">
+                          {perfPlayer?.fotoUrl ? (
+                            <Image
+                              src={perfPlayer.fotoUrl}
+                              alt={perfPlayer.nick}
+                              width={32}
+                              height={32}
+                              className="rounded-full object-cover shrink-0"
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                              <UserCircle className="w-5 h-5 text-amber-500" />
+                            </div>
+                          )}
+                          <span className="text-sm text-[#334155] flex-1 min-w-0 truncate">
+                            {perfPlayer?.nick ?? j.nombre}
+                          </span>
+                          {puedeConfirmar ? (
+                            <button
+                              onClick={() => handleConfirmarPorUid(j.uid!)}
+                              disabled={actionLoading}
+                              className={`text-xs px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 shrink-0 ${
+                                esMio
+                                  ? "bg-[#0D9488] text-white hover:bg-teal-700"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              {esMio ? "Confirmar mi asistencia" : "Me confirma que viene"}
+                            </button>
+                          ) : (
+                            <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full shrink-0">
+                              Pendiente
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Pendientes sin cuenta */}
+                {pendientesNoRegistrados.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Sin cuenta</p>
-                    {pendientesNombres.map((nombre, i) => (
+                    {pendientesNoRegistrados.map((j, i) => (
                       <div key={i} className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0">
                           <UserCircle className="w-5 h-5 text-slate-400" />
                         </div>
-                        <span className="text-sm text-[#334155] flex-1 min-w-0 truncate">{nombre}</span>
+                        <span className="text-sm text-[#334155] flex-1 min-w-0 truncate">{j.nombre}</span>
                         <span className="text-xs bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full shrink-0">
                           Pendiente
                         </span>
@@ -356,7 +463,7 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
                   </div>
                 )}
 
-                {plazasOcupadas === 0 && pendientesNombres.length === 0 && (
+                {plazasOcupadas === 0 && pendientesRegistrados.length === 0 && pendientesNoRegistrados.length === 0 && (
                   <p className="text-sm text-slate-400 text-center py-2">Ningún jugador aún</p>
                 )}
               </>
@@ -373,8 +480,18 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
         </div>
       )}
 
-      {(puedeUnirse || puedeSalir) && (
+      {(tieneInvitacionPendiente || puedeUnirse || puedeSalir) && (
         <div className="flex gap-3">
+          {tieneInvitacionPendiente && (
+            <button
+              onClick={() => handleConfirmarPorUid(user!.uid)}
+              disabled={actionLoading}
+              className="flex-1 flex items-center justify-center gap-2 bg-[#0D9488] text-white py-2.5 rounded-xl font-medium hover:bg-teal-700 transition-colors disabled:opacity-50"
+            >
+              <UserCheck className="w-4 h-4" />
+              Confirmar mi asistencia
+            </button>
+          )}
           {puedeUnirse && (
             <button
               onClick={handleJoin}
@@ -446,6 +563,68 @@ export function PartidaDetailScreen({ salaId, partidaId }: { salaId: string; par
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Eliminar partida (solo superadmin, solo canceladas) */}
+      {isSuperadmin && partida.estado === "cancelada" && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <p className="text-sm font-medium text-[#334155] mb-3">Zona de peligro</p>
+          <button
+            onClick={() => { setShowDeleteDialog(true); setDeleteConfirmText(""); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border border-red-300 text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Eliminar partida
+          </button>
+        </div>
+      )}
+
+      {/* Diálogo de confirmación de eliminación */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-red-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-[#334155]">Eliminar partida</p>
+                <p className="text-sm text-slate-500 mt-1">
+                  Esta acción es <strong>permanente e irreversible</strong>. La partida y todos sus datos
+                  asociados se borrarán definitivamente.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-slate-600">
+                Escribe <span className="font-semibold text-red-600">Eliminar partida</span> para confirmar:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder="Eliminar partida"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+              />
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={actionLoading}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 text-[#334155] hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={actionLoading || deleteConfirmText !== "Eliminar partida"}
+                className="px-4 py-2 rounded-xl text-sm font-medium bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+              >
+                {actionLoading ? "Eliminando…" : "Eliminar definitivamente"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

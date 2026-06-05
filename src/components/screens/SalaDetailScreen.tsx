@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Clock, ExternalLink, Star, ArrowLeft, CalendarDays, Users, Pencil } from "lucide-react";
-import { getSala, getPartidasDeSala } from "@/lib/salas";
+import { MapPin, Clock, ExternalLink, Star, ArrowLeft, CalendarDays, Users, Pencil, ChevronDown, ChevronUp } from "lucide-react";
+import { getSala, getPartidasDeSala, getPartidasCanceladasDeSala } from "@/lib/salas";
 import { useAuthStore } from "@/store/authStore";
 import type { Partida } from "@/types";
 
@@ -81,6 +82,8 @@ export function SalaDetailScreen({ salaId }: { salaId: string }) {
   const { perfil } = useAuthStore();
   const canCreatePartida = perfil && ["gestor", "admin", "superadmin"].includes(perfil.rol);
   const canEdit = perfil && ["admin", "superadmin"].includes(perfil.rol);
+  const isSuperadmin = perfil?.rol === "superadmin";
+  const [expandedCanceladas, setExpandedCanceladas] = useState(false);
 
   const { data: sala, isLoading: loadingSala } = useQuery({
     queryKey: ["sala", salaId],
@@ -91,6 +94,12 @@ export function SalaDetailScreen({ salaId }: { salaId: string }) {
     queryKey: ["partidas", salaId],
     queryFn: () => getPartidasDeSala(salaId),
     enabled: !!sala,
+  });
+
+  const { data: partidasCanceladas = [] } = useQuery({
+    queryKey: ["partidas-canceladas", salaId],
+    queryFn: () => getPartidasCanceladasDeSala(salaId),
+    enabled: !!sala && isSuperadmin,
   });
 
   if (loadingSala) {
@@ -216,6 +225,33 @@ export function SalaDetailScreen({ salaId }: { salaId: string }) {
           <RatingRow label="Ambientación 🎭" value={v.mediaAmbientacion} total={v.totalVotosAmbientacion} />
           <RatingRow label="Gamemaster 🙋" value={v.mediaGamemaster} total={v.totalVotosGamemaster} />
           <RatingRow label="Miedo 👻" value={v.mediaMiedo} total={v.totalVotosMiedo} />
+        </div>
+      )}
+
+      {/* Partidas canceladas (solo superadmin) */}
+      {isSuperadmin && partidasCanceladas.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <button
+            onClick={() => setExpandedCanceladas((v) => !v)}
+            className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
+          >
+            <h2 className="font-semibold text-slate-400 flex items-center gap-2 text-sm">
+              Partidas canceladas
+              <span className="text-xs bg-red-50 text-red-500 px-2 py-0.5 rounded-full font-medium">
+                {partidasCanceladas.length}
+              </span>
+            </h2>
+            {expandedCanceladas
+              ? <ChevronUp className="w-4 h-4 text-slate-400" />
+              : <ChevronDown className="w-4 h-4 text-slate-400" />}
+          </button>
+          {expandedCanceladas && (
+            <div className="border-t border-slate-100 divide-y divide-slate-50">
+              {partidasCanceladas.map((p) => (
+                <PartidaRow key={p.id} partida={p} salaId={salaId} />
+              ))}
+            </div>
+          )}
         </div>
       )}
 

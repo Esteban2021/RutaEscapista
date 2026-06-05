@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { useAuthStore } from "@/store/authStore";
 import { getOrCreatePerfil } from "@/lib/usuarios";
@@ -13,6 +13,10 @@ export function useAuth() {
         const token = await firebaseUser.getIdToken();
         document.cookie = `firebase-token=${token}; path=/`;
         const perfil = await getOrCreatePerfil(firebaseUser.uid);
+        if (perfil.bloqueado) {
+          await signOut(auth);
+          return;
+        }
         setUser(firebaseUser);
         setPerfil(perfil);
       } else {

@@ -161,10 +161,8 @@ export function CrearPartidaScreen() {
     if (!user) return;
     setSubmitError(null);
     try {
-      const jugadoresConfirmados = [
-        ...(creadorJuega ? [user.uid] : []),
-        ...jugadoresRegistrados.map((u) => u.uid),
-      ];
+      const jugadoresConfirmados = creadorJuega ? [user.uid] : [];
+      const jugadoresInvitados = jugadoresRegistrados.map((u) => ({ uid: u.uid, nick: u.nick }));
       const id = await crearPartida({
         salaId,
         fecha: data.fecha,
@@ -173,6 +171,7 @@ export function CrearPartidaScreen() {
         notas: data.notas,
         jugadoresConfirmados,
         jugadoresPendientes,
+        jugadoresInvitados,
         estado: data.estado,
         creadorId: user.uid,
       });
@@ -308,6 +307,12 @@ export function CrearPartidaScreen() {
                   </div>
                 )}
               </div>
+
+              {jugadoresRegistrados.length > 0 && (
+                <p className="text-xs text-amber-600">
+                  Deberán confirmar su asistencia en la ficha de la partida.
+                </p>
+              )}
 
               {jugadoresRegistrados.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">

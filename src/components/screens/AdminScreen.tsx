@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Users, Building2, CalendarDays, Map, ChevronRight, ShieldAlert, ClipboardList } from "lucide-react";
+import { Users, Building2, CalendarDays, Map, ChevronRight, ShieldAlert, ClipboardList, UserCog } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { getStats, getPeticionesGestor } from "@/lib/admin";
 
@@ -113,6 +113,22 @@ export function AdminScreen() {
             <div>
               <p className="text-sm font-medium text-[#334155]">Reportes de fotos</p>
               <p className="text-xs text-slate-400">Revisar contenido reportado</p>
+            </div>
+          </div>
+          <ChevronRight className="w-4 h-4 text-slate-400" />
+        </Link>
+
+        <Link
+          href="/admin/usuarios"
+          className="flex items-center justify-between bg-white rounded-xl shadow-sm px-4 py-3.5 hover:bg-slate-50 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <UserCog className="w-5 h-5 text-[#0D9488]" />
+            <div>
+              <p className="text-sm font-medium text-[#334155]">Gestión de usuarios</p>
+              <p className="text-xs text-slate-400">
+                {perfil?.rol === "superadmin" ? "Ver, cambiar rol y bloquear usuarios" : "Ver usuarios registrados"}
+              </p>
             </div>
           </div>
           <ChevronRight className="w-4 h-4 text-slate-400" />

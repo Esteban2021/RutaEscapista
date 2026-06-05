@@ -8,12 +8,17 @@ service cloud.firestore {
 
     match /usuarios/{uid} {
 
-      // Solo el usuario puede editar su propio perfil
       allow read: if request.auth != null;
-      allow update, delete: if request.auth != null && request.auth.uid == uid;
 
-      // Crear perfil propio
       allow create: if request.auth != null && request.auth.uid == uid;
+
+      // El propio usuario puede editar su perfil; solo superadmin puede editar perfiles ajenos (rol, bloqueado…)
+      allow update: if request.auth != null && (
+        request.auth.uid == uid ||
+        get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol == 'superadmin'
+      );
+
+      allow delete: if request.auth != null && request.auth.uid == uid;
     }
 
 
